@@ -72,13 +72,23 @@ document.addEventListener('DOMContentLoaded', function() {
   function getRegionName(regionCode) {
     const regionNames = {
       'auto': 'Auto',
-      'us-east': 'US East',
-      'us-west': 'US West', 
-      'us-central': 'US Central',
-      'eu-west': 'Europe West',
-      'eu-central': 'Europe Central',
-      'asia-pacific': 'Asia Pacific',
-      'asia-east': 'Asia East'
+      'seattle': 'Seattle, WA',
+      'losangeles': 'Los Angeles, CA',
+      'dallas': 'Dallas, TX',
+      'chicago': 'Chicago, IL',
+      'atlanta': 'Atlanta, GA',
+      'miami': 'Miami, FL',
+      'ashburn': 'Ashburn, VA',
+      'newyork': 'New York City, NY',
+      'london': 'London, UK',
+      'amsterdam': 'Amsterdam, NL',
+      'paris': 'Paris, FR',
+      'frankfurt': 'Frankfurt, DE',
+      'warsaw': 'Warsaw, PL',
+      'mumbai': 'Mumbai, IN',
+      'tokyo': 'Tokyo, JP',
+      'singapore': 'Singapore',
+      'sydney': 'Sydney, AU'
     };
     return regionNames[regionCode] || regionCode;
   }

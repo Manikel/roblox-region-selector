@@ -2,6 +2,49 @@
 
 let currentRegion = 'auto';
 
+// Roblox server IP ranges mapped to cities
+const REGION_IP_RANGES = {
+  'seattle': ['128.116.115.0/24'],
+  'losangeles': ['128.116.116.0/24', '128.116.1.0/24', '128.116.63.0/24'],
+  'dallas': ['128.116.95.0/24'],
+  'chicago': ['128.116.101.0/24', '128.116.48.0/24'],
+  'atlanta': ['128.116.22.0/24', '128.116.99.0/24'],
+  'miami': ['128.116.45.0/24', '128.116.127.0/24'],
+  'ashburn': ['128.116.102.0/24', '128.116.53.0/24'],
+  'newyork': ['128.116.32.0/24'],
+  'london': ['128.116.33.0/24', '128.116.119.0/24'],
+  'amsterdam': ['128.116.21.0/24'],
+  'paris': ['128.116.4.0/24', '128.116.122.0/24'],
+  'frankfurt': ['128.116.5.0/24', '128.116.44.0/24', '128.116.123.0/24'],
+  'warsaw': ['128.116.31.0/24', '128.116.124.0/24'],
+  'mumbai': ['128.116.104.0/24'],
+  'tokyo': ['128.116.55.0/24', '128.116.120.0/24'],
+  'singapore': ['128.116.50.0/24', '128.116.97.0/24'],
+  'sydney': ['128.116.51.0/24']
+};
+
+// Get a random IP from the selected region's ranges
+function getRandomIPFromRegion(regionCode) {
+  if (regionCode === 'auto' || !REGION_IP_RANGES[regionCode]) {
+    return null;
+  }
+  
+  const ranges = REGION_IP_RANGES[regionCode];
+  const selectedRange = ranges[Math.floor(Math.random() * ranges.length)];
+  
+  // Parse CIDR (e.g., "128.116.115.0/24")
+  const [baseIP, prefixLength] = selectedRange.split('/');
+  const [a, b, c, d] = baseIP.split('.').map(Number);
+  
+  // For /24 networks, only the last octet varies (0-255)
+  if (prefixLength === '24') {
+    const randomLastOctet = Math.floor(Math.random() * 256);
+    return `${a}.${b}.${c}.${randomLastOctet}`;
+  }
+  
+  return baseIP; // Fallback
+}
+
 // Initialize when extension starts
 chrome.runtime.onStartup.addListener(initialize);
 chrome.runtime.onInstalled.addListener(initialize);
