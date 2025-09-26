@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 280px;
+      padding: 16px;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .subtitle {
+      font-size: 12px;
+      opacity: 0.8;
+      margin: 0;
+    }
+    
+    .region-selector {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    select {
+      width: 100%;
+      padding: 8px;
+      border: none;
+      border-radius: 4px;
+      background: white;
+      color: #333;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    
+    .status {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 12px;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    
+    .status.active {
+      background: rgba(76, 175, 80, 0.3);
+    }
+    
+    .buttons {
+      display: flex;
+      gap: 8px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.2);
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+      transition: background 0.2s;
+    }
+    
+    button:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    button.primary {
+      background: #4CAF50;
+    }
+    
+    button.primary:hover {
+      background: #45a049;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🌍 Region Selector</h1>
+    <p class="subtitle">Choose your preferred Roblox server region</p>
+  </div>
+  
+  <div class="region-selector">
+    <label for="regionSelect">Select Region:</label>
+    <select id="regionSelect">
+      <option value="auto">🌐 Auto (Default)</option>
+      <option value="us-east">🇺🇸 US East</option>
+      <option value="us-west">🇺🇸 US West</option>
+      <option value="us-central">🇺🇸 US Central</option>
+      <option value="eu-west">🇪🇺 Europe West</option>
+      <option value="eu-central">🇪🇺 Europe Central</option>
+      <option value="asia-pacific">🌏 Asia Pacific</option>
+      <option value="asia-east">🌏 Asia East</option>
+    </select>
+  </div>
+  
+  <div class="status" id="status">
+    Extension ready - select a region to begin
+  </div>
+  
+  <div class="buttons">
+    <button id="saveBtn" class="primary">Save Settings</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
