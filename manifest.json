@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "Roblox Region Selector",
+  "version": "1.0",
+  "description": "Choose your preferred Roblox server region for better ping and connection",
+  
+  "permissions": [
+    "activeTab",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess",
+    "storage"
+  ],
+  
+  "host_permissions": [
+    "*://*.roblox.com/*",
+    "*://*.rbxcdn.com/*"
+  ],
+  
+  "background": {
+    "service_worker": "background.js"
+  },
+  
+  "content_scripts": [
+    {
+      "matches": ["*://*.roblox.com/games/*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Select Roblox Region"
+  },
+  
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  }
+}
