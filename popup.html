@@ -3,68 +3,93 @@
 <head>
   <meta charset="utf-8">
   <style>
-    body {
-      width: 280px;
-      padding: 16px;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    * {
+      box-sizing: border-box;
       margin: 0;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
+      padding: 0;
+    }
+    
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      overflow: hidden;
     }
     
     .header {
-      text-align: center;
-      margin-bottom: 16px;
+      background: #2d2d2d;
+      padding: 16px;
+      border-bottom: 1px solid #3a3a3a;
     }
     
     h1 {
-      margin: 0 0 8px 0;
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 4px;
     }
     
     .subtitle {
       font-size: 12px;
-      opacity: 0.8;
-      margin: 0;
+      color: #a0a0a0;
+      font-weight: 400;
     }
     
-    .region-selector {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      padding: 12px;
-      margin-bottom: 12px;
+    .content {
+      padding: 16px;
+    }
+    
+    .form-group {
+      margin-bottom: 16px;
     }
     
     label {
       display: block;
-      margin-bottom: 8px;
-      font-size: 14px;
+      margin-bottom: 6px;
+      font-size: 13px;
       font-weight: 500;
+      color: #b0b0b0;
     }
     
     select {
       width: 100%;
+      padding: 10px 12px;
+      background: #2d2d2d;
+      border: 1px solid #404040;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    select:focus {
+      border-color: #0078d4;
+      box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+    }
+    
+    select option {
+      background: #2d2d2d;
+      color: #e0e0e0;
       padding: 8px;
-      border: none;
-      border-radius: 4px;
-      background: white;
-      color: #333;
-      font-size: 14px;
-      box-sizing: border-box;
     }
     
     .status {
-      background: rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      padding: 8px;
+      background: #2a2a2a;
+      border: 1px solid #404040;
+      border-radius: 6px;
+      padding: 10px 12px;
       font-size: 12px;
+      color: #b0b0b0;
+      margin-bottom: 16px;
       text-align: center;
-      margin-bottom: 12px;
     }
     
     .status.active {
-      background: rgba(76, 175, 80, 0.3);
+      background: #1a3d1a;
+      border-color: #2d5a2d;
+      color: #90ee90;
     }
     
     .buttons {
@@ -74,56 +99,78 @@
     
     button {
       flex: 1;
-      padding: 8px;
-      border: none;
-      border-radius: 4px;
-      background: rgba(255, 255, 255, 0.2);
-      color: white;
+      padding: 10px 16px;
+      border: 1px solid #404040;
+      border-radius: 6px;
+      background: #2d2d2d;
+      color: #e0e0e0;
       cursor: pointer;
       font-size: 12px;
-      transition: background 0.2s;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      outline: none;
     }
     
     button:hover {
-      background: rgba(255, 255, 255, 0.3);
+      background: #383838;
+      border-color: #505050;
+    }
+    
+    button:active {
+      transform: translateY(1px);
     }
     
     button.primary {
-      background: #4CAF50;
+      background: #0078d4;
+      border-color: #106ebe;
+      color: #ffffff;
     }
     
     button.primary:hover {
-      background: #45a049;
+      background: #106ebe;
+      border-color: #005a9e;
+    }
+    
+    button.primary:focus {
+      box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.3);
+    }
+    
+    .divider {
+      height: 1px;
+      background: #3a3a3a;
+      margin: 16px 0;
     }
   </style>
 </head>
 <body>
   <div class="header">
-    <h1>🌍 Region Selector</h1>
-    <p class="subtitle">Choose your preferred Roblox server region</p>
+    <h1>Roblox Region Selector</h1>
+    <p class="subtitle">Choose your preferred server region</p>
   </div>
   
-  <div class="region-selector">
-    <label for="regionSelect">Select Region:</label>
-    <select id="regionSelect">
-      <option value="auto">🌐 Auto (Default)</option>
-      <option value="us-east">🇺🇸 US East</option>
-      <option value="us-west">🇺🇸 US West</option>
-      <option value="us-central">🇺🇸 US Central</option>
-      <option value="eu-west">🇪🇺 Europe West</option>
-      <option value="eu-central">🇪🇺 Europe Central</option>
-      <option value="asia-pacific">🌏 Asia Pacific</option>
-      <option value="asia-east">🌏 Asia East</option>
-    </select>
-  </div>
-  
-  <div class="status" id="status">
-    Extension ready - select a region to begin
-  </div>
-  
-  <div class="buttons">
-    <button id="saveBtn" class="primary">Save Settings</button>
-    <button id="resetBtn">Reset</button>
+  <div class="content">
+    <div class="form-group">
+      <label for="regionSelect">Server Region</label>
+      <select id="regionSelect">
+        <option value="auto">Auto (Default)</option>
+        <option value="us-east">US East</option>
+        <option value="us-west">US West</option>
+        <option value="us-central">US Central</option>
+        <option value="eu-west">Europe West</option>
+        <option value="eu-central">Europe Central</option>
+        <option value="asia-pacific">Asia Pacific</option>
+        <option value="asia-east">Asia East</option>
+      </select>
+    </div>
+    
+    <div class="status" id="status">
+      Extension ready - select a region to begin
+    </div>
+    
+    <div class="buttons">
+      <button id="saveBtn" class="primary">Apply</button>
+      <button id="resetBtn">Reset</button>
+    </div>
   </div>
   
   <script src="popup.js"></script>
