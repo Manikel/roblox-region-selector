@@ -6,6 +6,7 @@
   
   "permissions": [
     "activeTab",
+    "scripting",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess",
     "storage"
@@ -13,7 +14,8 @@
   
   "host_permissions": [
     "*://*.roblox.com/*",
-    "*://*.rbxcdn.com/*"
+    "*://games.roblox.com/*",
+    "*://gamejoin.roblox.com/*"
   ],
   
   "background": {
@@ -31,5 +33,10 @@
   "action": {
     "default_popup": "popup.html",
     "default_title": "Select Roblox Region"
-  }
+  },
+  
+  "web_accessible_resources": [{
+    "resources": ["injector.js"],
+    "matches": ["*://*.roblox.com/*"]
+  }]
 }
