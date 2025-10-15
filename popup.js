@@ -59,10 +59,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // Load saved region preference
   loadSavedRegion();
 
-  // Measure ping only if on Roblox
-  if (isOnRoblox) {
-    measureRegionPings();
-  }
+  // Measure ping to all regions
+  measureRegionPings();
 
   // Save button click handler
   saveBtn.addEventListener('click', function() {
@@ -132,18 +130,12 @@ document.addEventListener('DOMContentLoaded', function() {
               updateStatus('On Roblox - Select a region to begin');
             }
           });
-          
-          // Start measuring pings since we're on Roblox
-          measureRegionPings();
         } else {
           // Disable controls and show warning
           regionSelect.disabled = true;
           saveBtn.disabled = true;
           resetBtn.disabled = true;
           updateStatus('Not on Roblox - Navigate to roblox.com to use this extension', 'warning');
-          
-          // Hide ping status completely
-          pingStatus.style.display = 'none';
         }
       }
     });
@@ -261,32 +253,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const pingColor = getPingColor(ping);
         const pingText = `${ping}ms`;
         
-        // Use monospace font for perfect alignment
-        // City name (left aligned) + spaces + ping (right aligned)
-        const totalWidth = 38; // Monospace character width
-        const spacesNeeded = Math.max(1, totalWidth - baseText.length - pingText.length);
-        const spacing = ' '.repeat(spacesNeeded);
+        // Calculate spacing to right-align ping
+        const totalWidth = 35; // Character width
+        const combined = baseText + pingText;
+        const spacesNeeded = Math.max(1, totalWidth - combined.length);
+        const spacing = '\u00A0'.repeat(spacesNeeded);
         
-        // Format: "City Name                 XXms"
-        const cityPart = baseText;
-        const spacePart = spacing;
-        const pingPart = pingText;
+        // Format: "City Name        XXms" with ping right-aligned
+        option.textContent = `${baseText}${spacing}${pingText}`;
         
-        // Use ANSI-style coloring with Unicode (won't work in option)
-        // Workaround: Use background color gradient
-        option.textContent = `${cityPart}${spacePart}${pingPart}`;
-        option.style.color = '#e0e0e0';
-        
-        // Create a gradient that colors only the right portion
-        const pingPercentStart = ((baseText.length + spacesNeeded) / totalWidth) * 100;
-        option.style.background = `linear-gradient(to right, 
-          #2d2d2d 0%, 
-          #2d2d2d ${pingPercentStart}%, 
-          ${pingColor}15 ${pingPercentStart}%, 
-          ${pingColor}15 100%)`;
-        
-        // Store the color for when option is selected
-        option.setAttribute('data-ping-color', pingColor);
+        // Color only the ping portion by using a class
+        const colorClass = ping < 100 ? 'ping-green' : (ping < 200 ? 'ping-yellow' : 'ping-red');
+        option.className = colorClass;
       }
     });
   }
