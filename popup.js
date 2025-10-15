@@ -1,292 +1,440 @@
-// popup.js - Handles the extension popup interface
-
-document.addEventListener('DOMContentLoaded', function() {
-  const regionSelect = document.getElementById('regionSelect');
-  const saveBtn = document.getElementById('saveBtn');
-  const resetBtn = document.getElementById('resetBtn');
-  const status = document.getElementById('status');
-  const pingStatus = document.getElementById('pingStatus');
-
-  let isOnRoblox = false;
-  let regionPings = {};
-
-  // CloudFlare trace endpoints for different regions (these are actual regional endpoints)
-  const REGION_ENDPOINTS = {
-    'seattle': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'losangeles': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'dallas': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'chicago': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'atlanta': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'miami': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'ashburn': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'newyork': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'london': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'amsterdam': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'paris': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'frankfurt': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'warsaw': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'mumbai': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'tokyo': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'singapore': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'sydney': 'https://speed.cloudflare.com/__down?bytes=1000'
-  };
-
-  // Estimated base pings for each region from common US locations
-  // These serve as approximations since we can't measure exact regional latency from browser
-  const ESTIMATED_PINGS = {
-    'seattle': 15,
-    'losangeles': 25,
-    'dallas': 35,
-    'chicago': 30,
-    'atlanta': 45,
-    'miami': 60,
-    'ashburn': 40,
-    'newyork': 50,
-    'london': 110,
-    'amsterdam': 120,
-    'paris': 125,
-    'frankfurt': 115,
-    'warsaw': 135,
-    'mumbai': 250,
-    'tokyo': 140,
-    'singapore': 180,
-    'sydney': 160
-  };
-
-  // Check if current tab is on Roblox
-  checkRobloxTab();
-
-  // Load saved region preference
-  loadSavedRegion();
-
-  // Save button click handler
-  saveBtn.addEventListener('click', function() {
-    const selectedRegion = regionSelect.value;
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
     
-    // Save to Chrome storage
-    chrome.storage.local.set({
-      'preferredRegion': selectedRegion
-    }, function() {
-      updateStatus('Region preference saved!', 'active');
-      
-      // Notify background script of the change
-      chrome.runtime.sendMessage({
-        action: 'updateRegion',
-        region: selectedRegion
-      });
-      
-      // Auto-close popup after a moment
-      setTimeout(() => {
-        window.close();
-      }, 1000);
-    });
-  });
-
-  // Reset button click handler
-  resetBtn.addEventListener('click', function() {
-    regionSelect.value = 'auto';
-    chrome.storage.local.remove('preferredRegion', function() {
-      updateStatus('Settings reset to default');
-      
-      chrome.runtime.sendMessage({
-        action: 'updateRegion',
-        region: 'auto'
-      });
-    });
-  });
-
-  // Region selection change handler
-  regionSelect.addEventListener('change', function() {
-    const region = regionSelect.value;
-    if (region === 'auto') {
-      updateStatus('Using Roblox default region selection');
-    } else {
-      const ping = regionPings[region];
-      const pingText = ping ? ` (~${ping}ms)` : '';
-      updateStatus(`Will connect to ${getRegionName(region)} servers${pingText}`);
+    body {
+      width: 320px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      overflow: hidden;
     }
-  });
-
-  function checkRobloxTab() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      if (tabs[0] && tabs[0].url) {
-        const url = tabs[0].url;
-        isOnRoblox = url.includes('roblox.com');
-        
-        if (isOnRoblox) {
-          // Enable controls
-          regionSelect.disabled = false;
-          saveBtn.disabled = false;
-          resetBtn.disabled = false;
-          
-          // Update status based on saved preference
-          chrome.storage.local.get(['preferredRegion'], function(result) {
-            if (result.preferredRegion && result.preferredRegion !== 'auto') {
-              updateStatus(`Current: ${getRegionName(result.preferredRegion)}`, 'active');
-            } else {
-              updateStatus('On Roblox - Select a region to begin');
-            }
-          });
-          
-          // Only measure pings if on Roblox
-          measureRegionPings();
-        } else {
-          // Disable controls and show warning
-          regionSelect.disabled = true;
-          saveBtn.disabled = true;
-          resetBtn.disabled = true;
-          updateStatus('Not on Roblox - Navigate to roblox.com to use this extension', 'warning');
-          
-          // Hide ping status completely when not on Roblox
-          pingStatus.style.display = 'none';
-        }
-      }
-    });
-  }
-
-  function loadSavedRegion() {
-    chrome.storage.local.get(['preferredRegion'], function(result) {
-      if (result.preferredRegion) {
-        regionSelect.value = result.preferredRegion;
-      }
-    });
-  }
-
-  function updateStatus(message, className = '') {
-    status.textContent = message;
-    status.className = 'status ' + className;
-  }
-
-  function getRegionName(regionCode) {
-    const regionNames = {
-      'auto': 'Auto',
-      'seattle': 'Seattle, WA',
-      'losangeles': 'Los Angeles, CA',
-      'dallas': 'Dallas, TX',
-      'chicago': 'Chicago, IL',
-      'atlanta': 'Atlanta, GA',
-      'miami': 'Miami, FL',
-      'ashburn': 'Ashburn, VA',
-      'newyork': 'New York City, NY',
-      'london': 'London, UK',
-      'amsterdam': 'Amsterdam, NL',
-      'paris': 'Paris, FR',
-      'frankfurt': 'Frankfurt, DE',
-      'warsaw': 'Warsaw, PL',
-      'mumbai': 'Mumbai, IN',
-      'tokyo': 'Tokyo, JP',
-      'singapore': 'Singapore',
-      'sydney': 'Sydney, AU'
-    };
-    return regionNames[regionCode] || regionCode;
-  }
-
-  async function measurePingToRegion(regionCode) {
-    const endpoint = REGION_ENDPOINTS[regionCode];
-    if (!endpoint) return null;
-
-    try {
-      const startTime = performance.now();
-      
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-      
-      await fetch(endpoint, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      const endTime = performance.now();
-      const measuredPing = Math.round(endTime - startTime);
-      
-      // Use base estimate and add measured variance + 30ms adjustment
-      const basePing = ESTIMATED_PINGS[regionCode] || 50;
-      const variance = Math.random() * 20 - 10; // ±10ms variance
-      const ping = Math.max(1, Math.round(basePing + variance + 30));
-      
-      return ping;
-    } catch (error) {
-      // Return estimated ping if measurement fails (with +30ms adjustment)
-      return (ESTIMATED_PINGS[regionCode] || null) ? ESTIMATED_PINGS[regionCode] + 30 : null;
-    }
-  }
-
-  async function measureRegionPings() {
-    pingStatus.textContent = 'Measuring latency...';
-    pingStatus.style.display = 'block';
-    pingStatus.style.color = '#888';
-
-    // Measure pings in batches for faster loading
-    const regions = Object.keys(REGION_ENDPOINTS);
-    const batchSize = 5;
-    let completed = 0;
-
-    for (let i = 0; i < regions.length; i += batchSize) {
-      const batch = regions.slice(i, i + batchSize);
-      
-      await Promise.all(batch.map(async (regionCode) => {
-        const ping = await measurePingToRegion(regionCode);
-        
-        if (ping !== null) {
-          regionPings[regionCode] = ping;
-          updateRegionOption(regionCode, ping);
-        }
-        
-        completed++;
-        pingStatus.textContent = `Measuring latency... (${completed}/${regions.length})`;
-      }));
-    }
-
-    pingStatus.textContent = 'Latency measurements complete ✓';
-    pingStatus.style.color = '#90ee90';
     
-    setTimeout(() => {
-      pingStatus.style.display = 'none';
-    }, 2000);
-  }
-
-  function updateRegionOption(regionCode, ping) {
-    const options = regionSelect.querySelectorAll('option');
+    .header {
+      background: #2d2d2d;
+      padding: 16px;
+      border-bottom: 1px solid #3a3a3a;
+      position: relative;
+    }
+    
+    .header-logo {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+    }
+    
+    h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 4px;
+      padding-right: 50px;
+    }
+    
+    .subtitle {
+      font-size: 12px;
+      color: #a0a0a0;
+      font-weight: 400;
+    }
+    
+    .content {
+      padding: 16px;
+    }
+    
+    .form-group {
+      margin-bottom: 16px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #b0b0b0;
+    }
+    
+    /* Custom Select Styles */
+    .custom-select {
+      position: relative;
+      width: 100%;
+    }
+    
+    .select-header {
+      width: 100%;
+      padding: 10px 12px;
+      background: #2d2d2d;
+      border: 1px solid #404040;
+      border-radius: 6px;
+      color: #e0e0e0;
+      font-size: 13px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .select-header:hover:not(.disabled) {
+      border-color: #505050;
+    }
+    
+    .select-header.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .select-header.open {
+      border-color: #0078d4;
+      box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+    
+    .select-arrow {
+      margin-left: 8px;
+      transition: transform 0.2s;
+    }
+    
+    .select-arrow.open {
+      transform: rotate(180deg);
+    }
+    
+    .select-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: #2d2d2d;
+      border: 1px solid #0078d4;
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      max-height: 250px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    
+    .select-group-label {
+      padding: 8px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #b0b0b0;
+      background: #252525;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .select-option {
+      padding: 10px 12px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: background 0.15s;
+      font-size: 13px;
+    }
+    
+    .select-option:hover {
+      background: #383838;
+    }
+    
+    .select-option.selected {
+      background: #1a3d5a;
+    }
+    
+    .option-city {
+      color: #e0e0e0;
+    }
+    
+    .option-ping {
+      font-weight: 500;
+      margin-left: auto;
+      padding-left: 8px;
+    }
+    
+    .ping-green { color: #90ee90; }
+    .ping-yellow { color: #ffcc90; }
+    .ping-red { color: #ff9090; }
+    
+    .ping-measuring {
+      font-size: 11px;
+      color: #888;
+      margin-top: 4px;
+    }
+    
+    .status {
+      background: #2a2a2a;
+      border: 1px solid #404040;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 12px;
+      color: #b0b0b0;
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    
+    .status.active {
+      background: #1a3d1a;
+      border-color: #2d5a2d;
+      color: #90ee90;
+    }
+    
+    .status.warning {
+      background: #3d2a1a;
+      border-color: #5a3d2d;
+      color: #ffcc90;
+    }
+    
+    .buttons {
+      display: flex;
+      gap: 8px;
+    }
+    
+    button {
+      flex: 1;
+      padding: 10px 16px;
+      border: 1px solid #404040;
+      border-radius: 6px;
+      background: #2d2d2d;
+      color: #e0e0e0;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      outline: none;
+    }
+    
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    button:hover:not(:disabled) {
+      background: #383838;
+      border-color: #505050;
+    }
+    
+    button:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+    
+    button.primary {
+      background: #0078d4;
+      border-color: #106ebe;
+      color: #ffffff;
+    }
+    
+    button.primary:hover:not(:disabled) {
+      background: #106ebe;
+      border-color: #005a9e;
+    }
+    
+    button.primary:focus:not(:disabled) {
+      box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon128.png" alt="RSP Logo" class="header-logo">
+    <h1>Roblox Region Selector</h1>
+    <p class="subtitle">Choose your preferred server region</p>
+  </div>
+  
+  <div class="content">
+    <div class="form-group">
+      <label for="regionSelect">Server Region</label>
+      <div class="custom-select" id="customSelect">
+        <div class="select-header disabled" id="selectHeader">
+          <span id="selectedText">Auto (Default)</span>
+          <span class="select-arrow">▼</span>
+        </div>
+        <div class="select-dropdown" id="selectDropdown" style="display: none;">
+          <div class="select-option" data-value="auto">
+            <span class="option-city">Auto (Default)</span>
+          </div>
+          <div class="select-group-label">United States</div>
+          <div class="select-option" data-value="seattle">
+            <span class="option-city">Seattle, WA</span>
+            <span class="option-ping" data-region="seattle"></span>
+          </div>
+          <div class="select-option" data-value="losangeles">
+            <span class="option-city">Los Angeles, CA</span>
+            <span class="option-ping" data-region="losangeles"></span>
+          </div>
+          <div class="select-option" data-value="dallas">
+            <span class="option-city">Dallas, TX</span>
+            <span class="option-ping" data-region="dallas"></span>
+          </div>
+          <div class="select-option" data-value="chicago">
+            <span class="option-city">Chicago, IL</span>
+            <span class="option-ping" data-region="chicago"></span>
+          </div>
+          <div class="select-option" data-value="atlanta">
+            <span class="option-city">Atlanta, GA</span>
+            <span class="option-ping" data-region="atlanta"></span>
+          </div>
+          <div class="select-option" data-value="miami">
+            <span class="option-city">Miami, FL</span>
+            <span class="option-ping" data-region="miami"></span>
+          </div>
+          <div class="select-option" data-value="ashburn">
+            <span class="option-city">Ashburn, VA</span>
+            <span class="option-ping" data-region="ashburn"></span>
+          </div>
+          <div class="select-option" data-value="newyork">
+            <span class="option-city">New York City, NY</span>
+            <span class="option-ping" data-region="newyork"></span>
+          </div>
+          <div class="select-group-label">Europe</div>
+          <div class="select-option" data-value="london">
+            <span class="option-city">London, UK</span>
+            <span class="option-ping" data-region="london"></span>
+          </div>
+          <div class="select-option" data-value="amsterdam">
+            <span class="option-city">Amsterdam, NL</span>
+            <span class="option-ping" data-region="amsterdam"></span>
+          </div>
+          <div class="select-option" data-value="paris">
+            <span class="option-city">Paris, FR</span>
+            <span class="option-ping" data-region="paris"></span>
+          </div>
+          <div class="select-option" data-value="frankfurt">
+            <span class="option-city">Frankfurt, DE</span>
+            <span class="option-ping" data-region="frankfurt"></span>
+          </div>
+          <div class="select-option" data-value="warsaw">
+            <span class="option-city">Warsaw, PL</span>
+            <span class="option-ping" data-region="warsaw"></span>
+          </div>
+          <div class="select-group-label">Asia Pacific</div>
+          <div class="select-option" data-value="mumbai">
+            <span class="option-city">Mumbai, IN</span>
+            <span class="option-ping" data-region="mumbai"></span>
+          </div>
+          <div class="select-option" data-value="tokyo">
+            <span class="option-city">Tokyo, JP</span>
+            <span class="option-ping" data-region="tokyo"></span>
+          </div>
+          <div class="select-option" data-value="singapore">
+            <span class="option-city">Singapore</span>
+            <span class="option-ping" data-region="singapore"></span>
+          </div>
+          <div class="select-option" data-value="sydney">
+            <span class="option-city">Sydney, AU</span>
+            <span class="option-ping" data-region="sydney"></span>
+          </div>
+        </div>
+      </div>
+      <div class="ping-measuring" id="pingStatus"></div>
+    </div>
+    
+    <div class="status" id="status">
+      Checking for Roblox tab...
+    </div>
+    
+    <div class="buttons">
+      <button id="saveBtn" class="primary" disabled>Apply</button>
+      <button id="resetBtn" disabled>Reset</button>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+  <script>
+    // Custom select functionality
+    const selectHeader = document.getElementById('selectHeader');
+    const selectDropdown = document.getElementById('selectDropdown');
+    const selectArrow = document.querySelector('.select-arrow');
+    const selectedText = document.getElementById('selectedText');
+    const options = document.querySelectorAll('.select-option');
+    
+    let currentValue = 'auto';
+    let isDropdownOpen = false;
+    
+    selectHeader.addEventListener('click', function() {
+      if (this.classList.contains('disabled')) return;
+      
+      isDropdownOpen = !isDropdownOpen;
+      selectDropdown.style.display = isDropdownOpen ? 'block' : 'none';
+      selectHeader.classList.toggle('open', isDropdownOpen);
+      selectArrow.classList.toggle('open', isDropdownOpen);
+    });
     
     options.forEach(option => {
-      if (option.value === regionCode) {
-        const cityName = getRegionName(regionCode);
+      option.addEventListener('click', function() {
+        currentValue = this.dataset.value;
+        const cityText = this.querySelector('.option-city').textContent;
+        selectedText.textContent = cityText;
         
-        // Create text with city left-aligned and ping right-aligned using monospace-friendly spacing
-        const maxWidth = 32; // Character width for alignment in monospace
-        const pingText = `${ping}ms`;
-        const spacesNeeded = Math.max(1, maxWidth - cityName.length - pingText.length);
-        const spacing = '\u00A0'.repeat(spacesNeeded);
+        options.forEach(opt => opt.classList.remove('selected'));
+        this.classList.add('selected');
         
-        // Format: "City Name          XXms"
-        option.textContent = `${cityName}${spacing}${pingText}`;
+        selectDropdown.style.display = 'none';
+        isDropdownOpen = false;
+        selectHeader.classList.remove('open');
+        selectArrow.classList.remove('open');
         
-        // Store ping color as data attribute
-        const pingColor = getPingColorClass(ping);
-        option.setAttribute('data-ping-class', pingColor);
+        // Trigger change event
+        const event = new CustomEvent('regionchange', { detail: { value: currentValue } });
+        document.getElementById('customSelect').dispatchEvent(event);
+      });
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!document.getElementById('customSelect').contains(e.target)) {
+        selectDropdown.style.display = 'none';
+        isDropdownOpen = false;
+        selectHeader.classList.remove('open');
+        selectArrow.classList.remove('open');
       }
     });
-  }
-
-  function getPingColorClass(ping) {
-    if (ping < 100) {
-      return 'ping-green';
-    } else if (ping < 200) {
-      return 'ping-yellow';
-    } else {
-      return 'ping-red';
-    }
-  }
-
-  function getPingColor(ping) {
-    if (ping < 100) {
-      return '#90ee90'; // Green
-    } else if (ping >= 100 && ping < 200) {
-      return '#ffcc90'; // Yellow/Orange
-    } else {
-      return '#ff9090'; // Light Red
-    }
-  }
-});
+    
+    // Export functions for popup.js
+    window.customSelect = {
+      getValue: () => currentValue,
+      setValue: (value) => {
+        const option = document.querySelector(`[data-value="${value}"]`);
+        if (option) {
+          option.click();
+        }
+      },
+      setEnabled: (enabled) => {
+        if (enabled) {
+          selectHeader.classList.remove('disabled');
+        } else {
+          selectHeader.classList.add('disabled');
+          selectDropdown.style.display = 'none';
+          isDropdownOpen = false;
+          selectHeader.classList.remove('open');
+          selectArrow.classList.remove('open');
+        }
+      },
+      updatePing: (region, ping) => {
+        const pingEl = document.querySelector(`[data-region="${region}"]`);
+        if (pingEl) {
+          pingEl.textContent = `${ping}ms`;
+          pingEl.classList.remove('ping-green', 'ping-yellow', 'ping-red');
+          if (ping < 100) {
+            pingEl.classList.add('ping-green');
+          } else if (ping < 200) {
+            pingEl.classList.add('ping-yellow');
+          } else {
+            pingEl.classList.add('ping-red');
+          }
+        }
+      }
+    };
+  </script>
+</body>
+</html>
