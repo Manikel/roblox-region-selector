@@ -5,6 +5,20 @@
     
     console.log('[Roblox Region Selector] Injector script loaded in page context');
     
+    let shouldInterceptPlay = false;
+    let currentRegion = 'auto';
+    
+    // Listen for region preference updates
+    window.addEventListener('message', function(event) {
+        if (event.origin !== window.location.origin) return;
+        
+        if (event.data && event.data.type === 'UPDATE_REGION_PREFERENCE') {
+            currentRegion = event.data.region;
+            shouldInterceptPlay = currentRegion && currentRegion !== 'auto';
+            console.log('[Roblox Region Selector] Region preference updated:', currentRegion, 'Intercept:', shouldInterceptPlay);
+        }
+    });
+    
     // Intercept Play button clicks
     function interceptPlayButton() {
         // Find all play buttons and add click listeners
@@ -15,17 +29,28 @@
                 button.dataset.regionSelectorAttached = 'true';
                 
                 button.addEventListener('click', function(e) {
-                    // Get place ID from URL
-                    const urlMatch = window.location.pathname.match(/\/games\/(\d+)/);
-                    if (urlMatch && urlMatch[1]) {
-                        const placeId = urlMatch[1];
+                    // Only intercept if a region is selected (not auto)
+                    if (shouldInterceptPlay) {
+                        // STOP the event from reaching Roblox
+                        e.preventDefault();
+                        e.stopPropagation();
+                        e.stopImmediatePropagation();
                         
-                        // Send message to content script
-                        window.postMessage({
-                            type: 'PLAY_BUTTON_CLICKED',
-                            placeId: placeId
-                        }, window.location.origin);
+                        // Get place ID from URL
+                        const urlMatch = window.location.pathname.match(/\/games\/(\d+)/);
+                        if (urlMatch && urlMatch[1]) {
+                            const placeId = urlMatch[1];
+                            
+                            // Send message to content script
+                            window.postMessage({
+                                type: 'PLAY_BUTTON_CLICKED',
+                                placeId: placeId
+                            }, window.location.origin);
+                        }
+                        
+                        return false;
                     }
+                    // If auto mode, let Roblox handle it normally
                 }, true); // Use capture phase to intercept before Roblox
             }
         });

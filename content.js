@@ -13,6 +13,12 @@
     if (response && response.region) {
       currentRegion = response.region;
       console.log('[Roblox Region Selector] Current region preference:', currentRegion);
+      
+      // Notify page context about the preference
+      window.postMessage({
+        type: 'UPDATE_REGION_PREFERENCE',
+        region: currentRegion
+      }, window.location.origin);
     }
   });
 
@@ -21,6 +27,12 @@
     if (message.action === 'regionChanged') {
       currentRegion = message.region;
       console.log('[Roblox Region Selector] Region preference updated to:', currentRegion);
+      
+      // Notify page context about the new preference
+      window.postMessage({
+        type: 'UPDATE_REGION_PREFERENCE',
+        region: currentRegion
+      }, window.location.origin);
     }
   });
 
@@ -53,7 +65,7 @@
   });
 
   async function handlePlayButtonClick(placeId) {
-    // If region is auto or not set, don't intercept
+    // If region is auto or not set, don't intercept - let Roblox handle it
     if (!currentRegion || currentRegion === 'auto') {
       console.log('[Roblox Region Selector] Auto mode, allowing normal join');
       return;
@@ -64,7 +76,7 @@
       return;
     }
 
-    console.log('[Roblox Region Selector] Intercepting play button, searching for', currentRegion, 'server');
+    console.log('[Roblox Region Selector] Play button intercepted, searching for', currentRegion, 'server');
     isSearching = true;
 
     // Show searching popup
