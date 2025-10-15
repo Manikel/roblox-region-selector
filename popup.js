@@ -253,31 +253,23 @@ document.addEventListener('DOMContentLoaded', function() {
     options.forEach(option => {
       if (option.value === regionCode) {
         const cityName = getRegionName(regionCode);
+        const pingColor = getPingColor(ping);
         
-        // Create text with city left-aligned and ping right-aligned using monospace-friendly spacing
-        const maxWidth = 32; // Character width for alignment in monospace
+        // Create a structured text with city on left and ping on right
+        // Using Unicode characters for spacing to simulate text-align
+        const maxWidth = 36; // Approximate character width for alignment
         const pingText = `${ping}ms`;
         const spacesNeeded = Math.max(1, maxWidth - cityName.length - pingText.length);
         const spacing = '\u00A0'.repeat(spacesNeeded);
         
-        // Format: "City Name          XXms"
+        // Set plain text without any HTML/styling
         option.textContent = `${cityName}${spacing}${pingText}`;
         
-        // Store ping color as data attribute
-        const pingColor = getPingColorClass(ping);
-        option.setAttribute('data-ping-class', pingColor);
+        // Store ping value and color as data attributes for potential styling
+        option.setAttribute('data-ping', ping);
+        option.setAttribute('data-ping-color', pingColor);
       }
     });
-  }
-
-  function getPingColorClass(ping) {
-    if (ping < 100) {
-      return 'ping-green';
-    } else if (ping < 200) {
-      return 'ping-yellow';
-    } else {
-      return 'ping-red';
-    }
   }
 
   function getPingColor(ping) {
