@@ -63,39 +63,149 @@
       color: #b0b0b0;
     }
     
-    select {
+    /* Custom Select Styles */
+    .custom-select {
+      position: relative;
       width: 100%;
-      padding: 10px 12px;
+    }
+    
+    .select-selected {
       background: #2d2d2d;
       border: 1px solid #404040;
       border-radius: 6px;
+      padding: 10px 30px 10px 12px;
       color: #e0e0e0;
       font-size: 13px;
-      outline: none;
+      cursor: pointer;
       transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      text-align: center;
+      position: relative;
+      user-select: none;
     }
     
-    select:disabled {
+    .select-selected:after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      right: 12px;
+      transform: translateY(-50%);
+      width: 0;
+      height: 0;
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 5px solid #e0e0e0;
+    }
+    
+    .select-selected.select-arrow-active:after {
+      border-top: none;
+      border-bottom: 5px solid #e0e0e0;
+    }
+    
+    .select-selected:hover:not(.select-disabled) {
+      border-color: #505050;
+    }
+    
+    .select-selected.select-disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
     
-    select:focus:not(:disabled) {
-      border-color: #0078d4;
-      box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+    .select-selected.select-disabled:after {
+      opacity: 0.5;
     }
     
-    select option {
+    .select-items {
+      position: absolute;
       background: #2d2d2d;
-      color: #e0e0e0;
-      padding: 8px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      border: 1px solid #404040;
+      border-radius: 6px;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 99;
+      max-height: 250px;
+      overflow-y: auto;
+      margin-top: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
     }
     
-    select optgroup {
+    .select-hide {
+      display: none;
+    }
+    
+    .select-items div {
+      padding: 10px 12px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: background-color 0.2s ease;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .select-items div:hover {
+      background: #383838;
+    }
+    
+    .select-items div.same-as-selected {
+      background: #383838;
+    }
+    
+    .option-city {
+      color: #e0e0e0;
+      flex: 1;
+    }
+    
+    .option-ping {
+      font-weight: 500;
+      margin-left: 12px;
+      white-space: nowrap;
+    }
+    
+    .option-ping.ping-low {
+      color: #90ee90;
+    }
+    
+    .option-ping.ping-medium {
+      color: #ffcc90;
+    }
+    
+    .option-ping.ping-high {
+      color: #ff9090;
+    }
+    
+    .optgroup-label {
+      padding: 8px 12px 4px 12px;
+      font-size: 11px;
       font-weight: 600;
-      color: #b0b0b0;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: default !important;
+      background: #252525 !important;
+    }
+    
+    .optgroup-label:hover {
+      background: #252525 !important;
+    }
+    
+    /* Scrollbar styles */
+    .select-items::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    .select-items::-webkit-scrollbar-track {
+      background: #1a1a1a;
+      border-radius: 4px;
+    }
+    
+    .select-items::-webkit-scrollbar-thumb {
+      background: #404040;
+      border-radius: 4px;
+    }
+    
+    .select-items::-webkit-scrollbar-thumb:hover {
+      background: #505050;
     }
     
     .ping-measuring {
@@ -192,32 +302,10 @@
   <div class="content">
     <div class="form-group">
       <label for="regionSelect">Server Region</label>
-      <select id="regionSelect" disabled>
-        <option value="auto">Auto (Default)</option>
-        <optgroup label="United States">
-          <option value="seattle">Seattle, WA</option>
-          <option value="losangeles">Los Angeles, CA</option>
-          <option value="dallas">Dallas, TX</option>
-          <option value="chicago">Chicago, IL</option>
-          <option value="atlanta">Atlanta, GA</option>
-          <option value="miami">Miami, FL</option>
-          <option value="ashburn">Ashburn, VA</option>
-          <option value="newyork">New York City, NY</option>
-        </optgroup>
-        <optgroup label="Europe">
-          <option value="london">London, UK</option>
-          <option value="amsterdam">Amsterdam, NL</option>
-          <option value="paris">Paris, FR</option>
-          <option value="frankfurt">Frankfurt, DE</option>
-          <option value="warsaw">Warsaw, PL</option>
-        </optgroup>
-        <optgroup label="Asia Pacific">
-          <option value="mumbai">Mumbai, IN</option>
-          <option value="tokyo">Tokyo, JP</option>
-          <option value="singapore">Singapore</option>
-          <option value="sydney">Sydney, AU</option>
-        </optgroup>
-      </select>
+      <div class="custom-select">
+        <div class="select-selected select-disabled" id="regionSelectDisplay">Auto (Default)</div>
+        <div class="select-items select-hide" id="regionSelectItems"></div>
+      </div>
       <div class="ping-measuring" id="pingStatus"></div>
     </div>
     
