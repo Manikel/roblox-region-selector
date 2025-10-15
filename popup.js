@@ -198,15 +198,15 @@ document.addEventListener('DOMContentLoaded', function() {
       const endTime = performance.now();
       const measuredPing = Math.round(endTime - startTime);
       
-      // Use base estimate and add measured variance
+      // Use base estimate and add measured variance + 30ms adjustment
       const basePing = ESTIMATED_PINGS[regionCode] || 50;
       const variance = Math.random() * 20 - 10; // ±10ms variance
-      const ping = Math.max(1, Math.round(basePing + variance));
+      const ping = Math.max(1, Math.round(basePing + variance + 30));
       
       return ping;
     } catch (error) {
-      // Return estimated ping if measurement fails
-      return ESTIMATED_PINGS[regionCode] || null;
+      // Return estimated ping if measurement fails (with +30ms adjustment)
+      return (ESTIMATED_PINGS[regionCode] || null) ? ESTIMATED_PINGS[regionCode] + 30 : null;
     }
   }
 
@@ -251,10 +251,20 @@ document.addEventListener('DOMContentLoaded', function() {
       if (option.value === regionCode) {
         const baseText = getRegionName(regionCode);
         const pingColor = getPingColor(ping);
+        const pingText = `${ping}ms`;
         
-        // Format with ping on the right side
-        option.textContent = `${baseText} — ${ping}ms`;
-        option.style.color = pingColor;
+        // Calculate spacing to right-align ping
+        const totalWidth = 35; // Character width
+        const combined = baseText + pingText;
+        const spacesNeeded = Math.max(1, totalWidth - combined.length);
+        const spacing = '\u00A0'.repeat(spacesNeeded);
+        
+        // Format: "City Name        XXms" with ping right-aligned
+        option.textContent = `${baseText}${spacing}${pingText}`;
+        
+        // Color only the ping portion by using a class
+        const colorClass = ping < 100 ? 'ping-green' : (ping < 200 ? 'ping-yellow' : 'ping-red');
+        option.className = colorClass;
       }
     });
   }
