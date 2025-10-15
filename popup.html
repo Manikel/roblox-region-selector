@@ -61,10 +61,15 @@
       color: #e0e0e0;
       font-size: 13px;
       outline: none;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
     }
     
-    select:focus {
+    select:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    select:focus:not(:disabled) {
       border-color: #0078d4;
       box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
     }
@@ -92,6 +97,12 @@
       color: #90ee90;
     }
     
+    .status.warning {
+      background: #3d2a1a;
+      border-color: #5a3d2d;
+      color: #ffcc90;
+    }
+    
     .buttons {
       display: flex;
       gap: 8px;
@@ -111,12 +122,17 @@
       outline: none;
     }
     
-    button:hover {
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    button:hover:not(:disabled) {
       background: #383838;
       border-color: #505050;
     }
     
-    button:active {
+    button:active:not(:disabled) {
       transform: translateY(1px);
     }
     
@@ -126,12 +142,12 @@
       color: #ffffff;
     }
     
-    button.primary:hover {
+    button.primary:hover:not(:disabled) {
       background: #106ebe;
       border-color: #005a9e;
     }
     
-    button.primary:focus {
+    button.primary:focus:not(:disabled) {
       box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.3);
     }
     
@@ -151,7 +167,7 @@
   <div class="content">
     <div class="form-group">
       <label for="regionSelect">Server Region</label>
-      <select id="regionSelect">
+      <select id="regionSelect" disabled>
         <option value="auto">Auto (Default)</option>
         <optgroup label="United States">
           <option value="seattle">Seattle, WA</option>
@@ -180,12 +196,12 @@
     </div>
     
     <div class="status" id="status">
-      Extension ready - select a region to begin
+      Checking for Roblox tab...
     </div>
     
     <div class="buttons">
-      <button id="saveBtn" class="primary">Apply</button>
-      <button id="resetBtn">Reset</button>
+      <button id="saveBtn" class="primary" disabled>Apply</button>
+      <button id="resetBtn" disabled>Reset</button>
     </div>
   </div>
   

@@ -6,6 +6,11 @@ document.addEventListener('DOMContentLoaded', function() {
   const resetBtn = document.getElementById('resetBtn');
   const status = document.getElementById('status');
 
+  let isOnRoblox = false;
+
+  // Check if current tab is on Roblox
+  checkRobloxTab();
+
   // Load saved region preference
   loadSavedRegion();
 
@@ -55,11 +60,41 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  function checkRobloxTab() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (tabs[0] && tabs[0].url) {
+        const url = tabs[0].url;
+        isOnRoblox = url.includes('roblox.com');
+        
+        if (isOnRoblox) {
+          // Enable controls
+          regionSelect.disabled = false;
+          saveBtn.disabled = false;
+          resetBtn.disabled = false;
+          
+          // Update status based on saved preference
+          chrome.storage.local.get(['preferredRegion'], function(result) {
+            if (result.preferredRegion && result.preferredRegion !== 'auto') {
+              updateStatus(`Current: ${getRegionName(result.preferredRegion)}`, 'active');
+            } else {
+              updateStatus('On Roblox - Select a region to begin');
+            }
+          });
+        } else {
+          // Disable controls and show warning
+          regionSelect.disabled = true;
+          saveBtn.disabled = true;
+          resetBtn.disabled = true;
+          updateStatus('Not on Roblox - Navigate to roblox.com to use this extension', 'warning');
+        }
+      }
+    });
+  }
+
   function loadSavedRegion() {
     chrome.storage.local.get(['preferredRegion'], function(result) {
       if (result.preferredRegion) {
         regionSelect.value = result.preferredRegion;
-        updateStatus(`Current: ${getRegionName(result.preferredRegion)}`, 'active');
       }
     });
   }

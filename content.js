@@ -3,15 +3,16 @@
 (function() {
   'use strict';
   
-  console.log('Roblox Region Selector content script loaded');
+  console.log('[Roblox Region Selector] Content script loaded');
 
   let currentRegion = 'auto';
+  let isSearching = false;
 
   // Get current region preference from background script
   chrome.runtime.sendMessage({action: 'getRegion'}, function(response) {
     if (response && response.region) {
       currentRegion = response.region;
-      console.log('Current region preference:', currentRegion);
+      console.log('[Roblox Region Selector] Current region preference:', currentRegion);
     }
   });
 
@@ -19,89 +20,252 @@
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'regionChanged') {
       currentRegion = message.region;
-      console.log('Region preference updated to:', currentRegion);
-      
-      // If user is on a game page, you might want to show a notification
-      if (window.location.pathname.includes('/games/')) {
-        showRegionNotification(currentRegion);
-      }
+      console.log('[Roblox Region Selector] Region preference updated to:', currentRegion);
     }
   });
 
-  function showRegionNotification(region) {
-    // Create a temporary notification to show the user their region preference
-    const notification = document.createElement('div');
-    notification.style.cssText = `
+  // Inject the injector script into page context
+  function injectScript() {
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL('injector.js');
+    script.onload = function() {
+      this.remove();
+    };
+    (document.head || document.documentElement).appendChild(script);
+  }
+
+  // Wait for page to be ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectScript);
+  } else {
+    injectScript();
+  }
+
+  // Listen for play button clicks
+  window.addEventListener('message', function(event) {
+    if (event.origin !== window.location.origin) {
+      return;
+    }
+    
+    if (event.data && event.data.type === 'PLAY_BUTTON_CLICKED') {
+      handlePlayButtonClick(event.data.placeId);
+    }
+  });
+
+  async function handlePlayButtonClick(placeId) {
+    // If region is auto or not set, don't intercept
+    if (!currentRegion || currentRegion === 'auto') {
+      console.log('[Roblox Region Selector] Auto mode, allowing normal join');
+      return;
+    }
+
+    if (isSearching) {
+      console.log('[Roblox Region Selector] Already searching for server');
+      return;
+    }
+
+    console.log('[Roblox Region Selector] Intercepting play button, searching for', currentRegion, 'server');
+    isSearching = true;
+
+    // Show searching popup
+    showSearchingPopup();
+
+    try {
+      // Find a server in the preferred region
+      const server = await findServerInRegion(placeId, currentRegion);
+      
+      if (server) {
+        updateSearchingPopup('Found server! Joining...', false);
+        
+        // Join the server
+        window.postMessage({
+          type: 'JOIN_SPECIFIC_SERVER',
+          placeId: placeId,
+          serverId: server.id
+        }, window.location.origin);
+        
+        // Close popup after a short delay
+        setTimeout(() => {
+          closeSearchingPopup();
+          isSearching = false;
+        }, 1000);
+      } else {
+        updateSearchingPopup(`No servers found in ${getRegionName(currentRegion)}. Try again or select a different region.`, true);
+        setTimeout(() => {
+          closeSearchingPopup();
+          isSearching = false;
+        }, 3000);
+      }
+    } catch (error) {
+      console.error('[Roblox Region Selector] Error finding server:', error);
+      updateSearchingPopup('Error finding server. Please try again.', true);
+      setTimeout(() => {
+        closeSearchingPopup();
+        isSearching = false;
+      }, 3000);
+    }
+  }
+
+  async function findServerInRegion(placeId, regionCode) {
+    const maxPages = 3; // Check up to 3 pages of servers
+    let cursor = '';
+    
+    for (let page = 0; page < maxPages; page++) {
+      try {
+        // Fetch server list
+        const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100${cursor ? '&cursor=' + cursor : ''}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          console.error('[Roblox Region Selector] Failed to fetch servers:', response.status);
+          break;
+        }
+        
+        const data = await response.json();
+        
+        if (!data.data || data.data.length === 0) {
+          break;
+        }
+
+        updateSearchingPopup(`Checking servers (page ${page + 1})...`, false);
+        
+        // Check each server in this page
+        for (const server of data.data) {
+          // Get server details from background script
+          const details = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({
+              action: 'getServerDetails',
+              placeId: placeId,
+              serverId: server.id
+            }, (response) => {
+              resolve(response);
+            });
+          });
+          
+          if (details && details.success && details.region === regionCode) {
+            console.log('[Roblox Region Selector] Found matching server:', server.id, 'IP:', details.serverIP);
+            return server;
+          }
+        }
+        
+        // Move to next page if available
+        if (data.nextPageCursor) {
+          cursor = data.nextPageCursor;
+        } else {
+          break;
+        }
+      } catch (error) {
+        console.error('[Roblox Region Selector] Error fetching page:', error);
+        break;
+      }
+    }
+    
+    return null;
+  }
+
+  function showSearchingPopup() {
+    // Remove any existing popup
+    closeSearchingPopup();
+    
+    const popup = document.createElement('div');
+    popup.id = 'roblox-region-selector-popup';
+    popup.style.cssText = `
       position: fixed;
-      top: 20px;
-      right: 20px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
       color: white;
-      padding: 12px 16px;
-      border-radius: 8px;
+      padding: 30px 40px;
+      border-radius: 16px;
       font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      font-size: 14px;
-      z-index: 10000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      transition: opacity 0.3s ease;
+      font-size: 16px;
+      z-index: 999999;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      min-width: 300px;
+      text-align: center;
+      border: 2px solid #3a3a3a;
     `;
     
-    const regionName = getRegionName(region);
-    notification.textContent = region === 'auto' 
-      ? '🌐 Using default region selection'
-      : `🌍 Region preference: ${regionName}`;
+    popup.innerHTML = `
+      <div style="margin-bottom: 15px;">
+        <div class="spinner" style="
+          border: 3px solid #3a3a3a;
+          border-top: 3px solid #0078d4;
+          border-radius: 50%;
+          width: 40px;
+          height: 40px;
+          animation: spin 1s linear infinite;
+          margin: 0 auto;
+        "></div>
+      </div>
+      <div id="roblox-region-selector-message" style="
+        font-weight: 500;
+        color: #e0e0e0;
+      ">Searching for server in ${getRegionName(currentRegion)}...</div>
+    `;
     
-    document.body.appendChild(notification);
+    // Add spinner animation
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `;
+    popup.appendChild(style);
     
-    // Remove notification after 3 seconds
-    setTimeout(() => {
-      notification.style.opacity = '0';
-      setTimeout(() => {
-        if (notification.parentNode) {
-          notification.parentNode.removeChild(notification);
+    document.body.appendChild(popup);
+  }
+
+  function updateSearchingPopup(message, isError) {
+    const popup = document.getElementById('roblox-region-selector-popup');
+    if (popup) {
+      const messageEl = document.getElementById('roblox-region-selector-message');
+      const spinner = popup.querySelector('.spinner');
+      
+      if (messageEl) {
+        messageEl.textContent = message;
+        if (isError) {
+          messageEl.style.color = '#ff6b6b';
         }
-      }, 300);
-    }, 3000);
+      }
+      
+      if (spinner && isError) {
+        spinner.style.display = 'none';
+      }
+    }
+  }
+
+  function closeSearchingPopup() {
+    const popup = document.getElementById('roblox-region-selector-popup');
+    if (popup && popup.parentNode) {
+      popup.parentNode.removeChild(popup);
+    }
   }
 
   function getRegionName(regionCode) {
     const regionNames = {
       'auto': 'Auto',
-      'us-east': 'US East',
-      'us-west': 'US West', 
-      'us-central': 'US Central',
-      'eu-west': 'Europe West',
-      'eu-central': 'Europe Central',
-      'asia-pacific': 'Asia Pacific',
-      'asia-east': 'Asia East'
+      'seattle': 'Seattle, WA',
+      'losangeles': 'Los Angeles, CA',
+      'dallas': 'Dallas, TX',
+      'chicago': 'Chicago, IL',
+      'atlanta': 'Atlanta, GA',
+      'miami': 'Miami, FL',
+      'ashburn': 'Ashburn, VA',
+      'newyork': 'New York City, NY',
+      'london': 'London, UK',
+      'amsterdam': 'Amsterdam, NL',
+      'paris': 'Paris, FR',
+      'frankfurt': 'Frankfurt, DE',
+      'warsaw': 'Warsaw, PL',
+      'mumbai': 'Mumbai, IN',
+      'tokyo': 'Tokyo, JP',
+      'singapore': 'Singapore',
+      'sydney': 'Sydney, AU'
     };
     return regionNames[regionCode] || regionCode;
   }
-
-  // TODO: This is where you'll implement the actual server region forcing
-  // You'll need to:
-  // 1. Research how Roblox selects servers (likely through specific API calls)
-  // 2. Intercept those calls and modify them based on user preference
-  // 3. Handle the response to ensure the game connects to the right region
-
-  /*
-  Future implementation might include:
-  
-  // Monitor for Roblox's server selection requests
-  const originalFetch = window.fetch;
-  window.fetch = function(...args) {
-    const [url, options] = args;
-    
-    // Check if this is a server selection request
-    if (url.includes('roblox.com') && url.includes('join') && currentRegion !== 'auto') {
-      console.log('Intercepting server request for region:', currentRegion);
-      
-      // Modify the request to prefer our selected region
-      // This will require reverse engineering Roblox's API
-    }
-    
-    return originalFetch.apply(this, args);
-  };
-  */
 
 })();
