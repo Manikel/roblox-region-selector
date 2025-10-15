@@ -59,9 +59,6 @@ document.addEventListener('DOMContentLoaded', function() {
   // Load saved region preference
   loadSavedRegion();
 
-  // Measure ping to all regions
-  measureRegionPings();
-
   // Save button click handler
   saveBtn.addEventListener('click', function() {
     const selectedRegion = regionSelect.value;
@@ -130,12 +127,18 @@ document.addEventListener('DOMContentLoaded', function() {
               updateStatus('On Roblox - Select a region to begin');
             }
           });
+          
+          // Only measure pings if on Roblox
+          measureRegionPings();
         } else {
           // Disable controls and show warning
           regionSelect.disabled = true;
           saveBtn.disabled = true;
           resetBtn.disabled = true;
           updateStatus('Not on Roblox - Navigate to roblox.com to use this extension', 'warning');
+          
+          // Hide ping status completely when not on Roblox
+          pingStatus.style.display = 'none';
         }
       }
     });
@@ -249,24 +252,32 @@ document.addEventListener('DOMContentLoaded', function() {
     
     options.forEach(option => {
       if (option.value === regionCode) {
-        const baseText = getRegionName(regionCode);
-        const pingColor = getPingColor(ping);
-        const pingText = `${ping}ms`;
+        const cityName = getRegionName(regionCode);
         
-        // Calculate spacing to right-align ping
-        const totalWidth = 35; // Character width
-        const combined = baseText + pingText;
-        const spacesNeeded = Math.max(1, totalWidth - combined.length);
+        // Create text with city left-aligned and ping right-aligned using monospace-friendly spacing
+        const maxWidth = 32; // Character width for alignment in monospace
+        const pingText = `${ping}ms`;
+        const spacesNeeded = Math.max(1, maxWidth - cityName.length - pingText.length);
         const spacing = '\u00A0'.repeat(spacesNeeded);
         
-        // Format: "City Name        XXms" with ping right-aligned
-        option.textContent = `${baseText}${spacing}${pingText}`;
+        // Format: "City Name          XXms"
+        option.textContent = `${cityName}${spacing}${pingText}`;
         
-        // Color only the ping portion by using a class
-        const colorClass = ping < 100 ? 'ping-green' : (ping < 200 ? 'ping-yellow' : 'ping-red');
-        option.className = colorClass;
+        // Store ping color as data attribute
+        const pingColor = getPingColorClass(ping);
+        option.setAttribute('data-ping-class', pingColor);
       }
     });
+  }
+
+  function getPingColorClass(ping) {
+    if (ping < 100) {
+      return 'ping-green';
+    } else if (ping < 200) {
+      return 'ping-yellow';
+    } else {
+      return 'ping-red';
+    }
   }
 
   function getPingColor(ping) {
