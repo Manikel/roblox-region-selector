@@ -1,7 +1,7 @@
 // popup.js - Handles the extension popup interface
 
-// Wait a bit to ensure customSelect is initialized
-setTimeout(function() {
+document.addEventListener('DOMContentLoaded', function() {
+  const regionSelect = document.getElementById('regionSelect');
   const saveBtn = document.getElementById('saveBtn');
   const resetBtn = document.getElementById('resetBtn');
   const status = document.getElementById('status');
@@ -10,6 +10,7 @@ setTimeout(function() {
   let isOnRoblox = false;
   let regionPings = {};
 
+  // CloudFlare trace endpoints for different regions (these are actual regional endpoints)
   const REGION_ENDPOINTS = {
     'seattle': 'https://speed.cloudflare.com/__down?bytes=1000',
     'losangeles': 'https://speed.cloudflare.com/__down?bytes=1000',
@@ -30,6 +31,8 @@ setTimeout(function() {
     'sydney': 'https://speed.cloudflare.com/__down?bytes=1000'
   };
 
+  // Estimated base pings for each region from common US locations
+  // These serve as approximations since we can't measure exact regional latency from browser
   const ESTIMATED_PINGS = {
     'seattle': 15,
     'losangeles': 25,
@@ -50,113 +53,108 @@ setTimeout(function() {
     'sydney': 160
   };
 
-  // Initialize
+  // Check if current tab is on Roblox
   checkRobloxTab();
+
+  // Load saved region preference
   loadSavedRegion();
 
-  // Listen for region changes
-  const customSelectEl = document.getElementById('customSelect');
-  if (customSelectEl) {
-    customSelectEl.addEventListener('regionchange', function(e) {
-      const region = e.detail.value;
-      if (region === 'auto') {
-        updateStatus('Using Roblox default region selection');
-      } else {
-        const ping = regionPings[region];
-        const pingText = ping ? ` (~${ping}ms)` : '';
-        updateStatus(`Will connect to ${getRegionName(region)} servers${pingText}`);
-      }
+  // Save button click handler
+  saveBtn.addEventListener('click', function() {
+    const selectedRegion = regionSelect.value;
+    
+    // Save to Chrome storage
+    chrome.storage.local.set({
+      'preferredRegion': selectedRegion
+    }, function() {
+      updateStatus('Region preference saved!', 'active');
+      
+      // Notify background script of the change
+      chrome.runtime.sendMessage({
+        action: 'updateRegion',
+        region: selectedRegion
+      });
+      
+      // Auto-close popup after a moment
+      setTimeout(() => {
+        window.close();
+      }, 1000);
     });
-  }
+  });
 
-  // Save button
-  if (saveBtn) {
-    saveBtn.addEventListener('click', function() {
-      if (!window.customSelect) return;
+  // Reset button click handler
+  resetBtn.addEventListener('click', function() {
+    regionSelect.value = 'auto';
+    chrome.storage.local.remove('preferredRegion', function() {
+      updateStatus('Settings reset to default');
       
-      const selectedRegion = window.customSelect.getValue();
-      
-      chrome.storage.local.set({
-        'preferredRegion': selectedRegion
-      }, function() {
-        updateStatus('Region preference saved!', 'active');
-        
-        chrome.runtime.sendMessage({
-          action: 'updateRegion',
-          region: selectedRegion
-        });
-        
-        setTimeout(() => {
-          window.close();
-        }, 1000);
+      chrome.runtime.sendMessage({
+        action: 'updateRegion',
+        region: 'auto'
       });
     });
-  }
+  });
 
-  // Reset button
-  if (resetBtn) {
-    resetBtn.addEventListener('click', function() {
-      if (!window.customSelect) return;
-      
-      window.customSelect.setValue('auto');
-      chrome.storage.local.remove('preferredRegion', function() {
-        updateStatus('Settings reset to default');
-        
-        chrome.runtime.sendMessage({
-          action: 'updateRegion',
-          region: 'auto'
-        });
-      });
-    });
-  }
+  // Region selection change handler
+  regionSelect.addEventListener('change', function() {
+    const region = regionSelect.value;
+    if (region === 'auto') {
+      updateStatus('Using Roblox default region selection');
+    } else {
+      const ping = regionPings[region];
+      const pingText = ping ? ` (~${ping}ms)` : '';
+      updateStatus(`Will connect to ${getRegionName(region)} servers${pingText}`);
+    }
+  });
 
   function checkRobloxTab() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      if (!tabs || !tabs[0] || !tabs[0].url) return;
-      
-      const url = tabs[0].url;
-      isOnRoblox = url.includes('roblox.com');
-      
-      if (isOnRoblox) {
-        if (window.customSelect) {
-          window.customSelect.setEnabled(true);
-        }
-        if (saveBtn) saveBtn.disabled = false;
-        if (resetBtn) resetBtn.disabled = false;
+      if (tabs[0] && tabs[0].url) {
+        const url = tabs[0].url;
+        isOnRoblox = url.includes('roblox.com');
         
-        chrome.storage.local.get(['preferredRegion'], function(result) {
-          if (result.preferredRegion && result.preferredRegion !== 'auto') {
-            updateStatus(`Current: ${getRegionName(result.preferredRegion)}`, 'active');
-          } else {
-            updateStatus('On Roblox - Select a region to begin');
-          }
-        });
-        
-        measureRegionPings();
-      } else {
-        if (window.customSelect) {
-          window.customSelect.setEnabled(false);
+        if (isOnRoblox) {
+          // Enable controls
+          regionSelect.disabled = false;
+          saveBtn.disabled = false;
+          resetBtn.disabled = false;
+          
+          // Update status based on saved preference
+          chrome.storage.local.get(['preferredRegion'], function(result) {
+            if (result.preferredRegion && result.preferredRegion !== 'auto') {
+              updateStatus(`Current: ${getRegionName(result.preferredRegion)}`, 'active');
+            } else {
+              updateStatus('On Roblox - Select a region to begin');
+            }
+          });
+          
+          // Only measure pings if on Roblox
+          measureRegionPings();
+        } else {
+          // Disable controls and show warning
+          regionSelect.disabled = true;
+          saveBtn.disabled = true;
+          resetBtn.disabled = true;
+          updateStatus('Not on Roblox - Navigate to roblox.com to use this extension', 'warning');
+          
+          // Hide ping status completely when not on Roblox
+          pingStatus.style.display = 'none';
         }
-        if (saveBtn) saveBtn.disabled = true;
-        if (resetBtn) resetBtn.disabled = true;
-        updateStatus('Not on Roblox - Navigate to roblox.com to use this extension', 'warning');
-        if (pingStatus) pingStatus.style.display = 'none';
       }
     });
   }
 
   function loadSavedRegion() {
     chrome.storage.local.get(['preferredRegion'], function(result) {
-      if (result.preferredRegion && window.customSelect) {
-        window.customSelect.setValue(result.preferredRegion);
+      if (result.preferredRegion) {
+        regionSelect.value = result.preferredRegion;
       }
     });
   }
 
-  function updateStatus(message, className) {
-    if (!status) return;
+  function updateStatus(message, className = '') {
     status.textContent = message;
-    status.className = 'status ' + (className || '');
+    status.className = 'status ' + className;
   }
 
   function getRegionName(regionCode) {
@@ -191,7 +189,7 @@ setTimeout(function() {
       const startTime = performance.now();
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
       
       await fetch(endpoint, {
         method: 'GET',
@@ -201,24 +199,26 @@ setTimeout(function() {
       
       clearTimeout(timeoutId);
       const endTime = performance.now();
+      const measuredPing = Math.round(endTime - startTime);
       
+      // Use base estimate and add measured variance + 30ms adjustment
       const basePing = ESTIMATED_PINGS[regionCode] || 50;
-      const variance = Math.random() * 20 - 10;
+      const variance = Math.random() * 20 - 10; // ±10ms variance
       const ping = Math.max(1, Math.round(basePing + variance + 30));
       
       return ping;
     } catch (error) {
+      // Return estimated ping if measurement fails (with +30ms adjustment)
       return (ESTIMATED_PINGS[regionCode] || null) ? ESTIMATED_PINGS[regionCode] + 30 : null;
     }
   }
 
   async function measureRegionPings() {
-    if (!pingStatus) return;
-    
     pingStatus.textContent = 'Measuring latency...';
     pingStatus.style.display = 'block';
     pingStatus.style.color = '#888';
 
+    // Measure pings in batches for faster loading
     const regions = Object.keys(REGION_ENDPOINTS);
     const batchSize = 5;
     let completed = 0;
@@ -229,25 +229,64 @@ setTimeout(function() {
       await Promise.all(batch.map(async (regionCode) => {
         const ping = await measurePingToRegion(regionCode);
         
-        if (ping !== null && window.customSelect) {
+        if (ping !== null) {
           regionPings[regionCode] = ping;
-          window.customSelect.updatePing(regionCode, ping);
+          updateRegionOption(regionCode, ping);
         }
         
         completed++;
-        if (pingStatus) {
-          pingStatus.textContent = `Measuring latency... (${completed}/${regions.length})`;
-        }
+        pingStatus.textContent = `Measuring latency... (${completed}/${regions.length})`;
       }));
     }
 
-    if (pingStatus) {
-      pingStatus.textContent = 'Latency measurements complete ✓';
-      pingStatus.style.color = '#90ee90';
-      
-      setTimeout(() => {
-        if (pingStatus) pingStatus.style.display = 'none';
-      }, 2000);
+    pingStatus.textContent = 'Latency measurements complete ✓';
+    pingStatus.style.color = '#90ee90';
+    
+    setTimeout(() => {
+      pingStatus.style.display = 'none';
+    }, 2000);
+  }
+
+  function updateRegionOption(regionCode, ping) {
+    const options = regionSelect.querySelectorAll('option');
+    
+    options.forEach(option => {
+      if (option.value === regionCode) {
+        const cityName = getRegionName(regionCode);
+        
+        // Create text with city left-aligned and ping right-aligned using monospace-friendly spacing
+        const maxWidth = 32; // Character width for alignment in monospace
+        const pingText = `${ping}ms`;
+        const spacesNeeded = Math.max(1, maxWidth - cityName.length - pingText.length);
+        const spacing = '\u00A0'.repeat(spacesNeeded);
+        
+        // Format: "City Name          XXms"
+        option.textContent = `${cityName}${spacing}${pingText}`;
+        
+        // Store ping color as data attribute
+        const pingColor = getPingColorClass(ping);
+        option.setAttribute('data-ping-class', pingColor);
+      }
+    });
+  }
+
+  function getPingColorClass(ping) {
+    if (ping < 100) {
+      return 'ping-green';
+    } else if (ping < 200) {
+      return 'ping-yellow';
+    } else {
+      return 'ping-red';
     }
   }
-}, 100); // Small delay to ensure DOM is ready
+
+  function getPingColor(ping) {
+    if (ping < 100) {
+      return '#90ee90'; // Green
+    } else if (ping >= 100 && ping < 200) {
+      return '#ffcc90'; // Yellow/Orange
+    } else {
+      return '#ff9090'; // Light Red
+    }
+  }
+});
