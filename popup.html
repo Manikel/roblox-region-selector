@@ -73,6 +73,7 @@
       font-size: 13px;
       outline: none;
       transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+      font-family: 'Courier New', monospace;
     }
     
     select:disabled {
@@ -89,6 +90,12 @@
       background: #2d2d2d;
       color: #e0e0e0;
       padding: 8px;
+    }
+    
+    .ping-measuring {
+      font-size: 11px;
+      color: #888;
+      margin-top: 4px;
     }
     
     .status {
@@ -205,6 +212,7 @@
           <option value="sydney">Sydney, AU</option>
         </optgroup>
       </select>
+      <div class="ping-measuring" id="pingStatus">Measuring ping to regions...</div>
     </div>
     
     <div class="status" id="status">

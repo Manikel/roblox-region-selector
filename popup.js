@@ -5,14 +5,19 @@ document.addEventListener('DOMContentLoaded', function() {
   const saveBtn = document.getElementById('saveBtn');
   const resetBtn = document.getElementById('resetBtn');
   const status = document.getElementById('status');
+  const pingStatus = document.getElementById('pingStatus');
 
   let isOnRoblox = false;
+  let regionPings = {};
 
   // Check if current tab is on Roblox
   checkRobloxTab();
 
   // Load saved region preference
   loadSavedRegion();
+
+  // Measure ping to all regions
+  measureRegionPings();
 
   // Save button click handler
   saveBtn.addEventListener('click', function() {
@@ -126,5 +131,54 @@ document.addEventListener('DOMContentLoaded', function() {
       'sydney': 'Sydney, AU'
     };
     return regionNames[regionCode] || regionCode;
+  }
+
+  async function measureRegionPings() {
+    pingStatus.textContent = 'Measuring ping to regions...';
+    pingStatus.style.color = '#888';
+
+    // Request ping measurements from background script
+    chrome.runtime.sendMessage({action: 'measurePings'}, function(response) {
+      if (response && response.pings) {
+        regionPings = response.pings;
+        updateRegionOptionsWithPing();
+        pingStatus.textContent = 'Ping measurements complete';
+        pingStatus.style.color = '#90ee90';
+        
+        setTimeout(() => {
+          pingStatus.style.display = 'none';
+        }, 2000);
+      } else {
+        pingStatus.textContent = 'Could not measure ping';
+        pingStatus.style.color = '#ff6b6b';
+      }
+    });
+  }
+
+  function updateRegionOptionsWithPing() {
+    const options = regionSelect.querySelectorAll('option');
+    
+    options.forEach(option => {
+      const regionCode = option.value;
+      if (regionCode === 'auto') return;
+      
+      const ping = regionPings[regionCode];
+      if (ping !== undefined && ping !== null) {
+        const originalText = getRegionName(regionCode);
+        const pingColor = getPingColor(ping);
+        option.textContent = `${originalText} - ${ping}ms`;
+        option.style.color = pingColor;
+      }
+    });
+  }
+
+  function getPingColor(ping) {
+    if (ping < 100) {
+      return '#90ee90'; // Green
+    } else if (ping >= 100 && ping < 200) {
+      return '#ffcc90'; // Yellow/Orange
+    } else {
+      return '#ff9090'; // Light Red
+    }
   }
 });
