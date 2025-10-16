@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Roblox Region Selector",
-  "version": "1.0",
+  "version": "1.0.1",
   "description": "Choose your preferred Roblox server region for better ping and connection",
   
   "icons": {
@@ -12,7 +12,6 @@
   
   "permissions": [
     "activeTab",
-    "scripting",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess",
     "storage"
