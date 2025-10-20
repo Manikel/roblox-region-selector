@@ -77,11 +77,16 @@
     }
     
     if (event.data && event.data.type === 'PLAY_BUTTON_CLICKED') {
+      console.log('[Roblox Region Selector] Received PLAY_BUTTON_CLICKED message');
       handlePlayButtonClick(event.data.placeId);
     }
   });
 
   async function handlePlayButtonClick(placeId) {
+    console.log('[Roblox Region Selector] handlePlayButtonClick called with placeId:', placeId);
+    console.log('[Roblox Region Selector] Current region:', currentRegion);
+    console.log('[Roblox Region Selector] isSearching:', isSearching);
+    
     // If region is auto or not set, don't intercept - let Roblox handle it
     if (!currentRegion || currentRegion === 'auto') {
       console.log('[Roblox Region Selector] Auto mode, allowing normal join');

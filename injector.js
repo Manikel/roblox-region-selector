@@ -21,24 +21,34 @@
     
     // Intercept ONLY the Play button on game pages
     function interceptPlayButton() {
-        // Target ONLY the main play button on game detail pages
-        // Look for the button that contains "Play" or has specific Roblox play button classes
-        const playButtons = document.querySelectorAll('button[class*="PlayButton"], button[class*="play-button"]');
+        // Target the specific play button using multiple selectors
+        const selectors = [
+            'button[data-testid="play-button"]',
+            '#game-details-play-button-container button',
+            'button.btn-common-play-game-lg',
+            'button[class*="btn-primary-md"][class*="play"]'
+        ];
+        
+        let playButtons = [];
+        for (const selector of selectors) {
+            const buttons = document.querySelectorAll(selector);
+            buttons.forEach(btn => {
+                if (!playButtons.includes(btn)) {
+                    playButtons.push(btn);
+                }
+            });
+        }
+        
+        console.log('[Roblox Region Selector] Found', playButtons.length, 'play buttons');
         
         playButtons.forEach(button => {
-            // Additional check: button should contain "Play" text or have play icon
-            const buttonText = button.textContent.trim().toLowerCase();
-            const hasPlayText = buttonText === 'play' || buttonText.includes('play');
-            
-            // Skip if this doesn't look like the main play button
-            if (!hasPlayText && !button.querySelector('[class*="play-icon"], [class*="PlayIcon"]')) {
-                return;
-            }
-            
             if (!button.dataset.regionSelectorAttached) {
                 button.dataset.regionSelectorAttached = 'true';
+                console.log('[Roblox Region Selector] Attached listener to play button');
                 
                 button.addEventListener('click', function(e) {
+                    console.log('[Roblox Region Selector] Play button clicked! shouldInterceptPlay:', shouldInterceptPlay);
+                    
                     // Only intercept if a region is selected (not auto)
                     if (shouldInterceptPlay) {
                         // STOP the event from reaching Roblox
@@ -46,21 +56,27 @@
                         e.stopPropagation();
                         e.stopImmediatePropagation();
                         
+                        console.log('[Roblox Region Selector] Intercepted play button click');
+                        
                         // Get place ID from URL
                         const urlMatch = window.location.pathname.match(/\/games\/(\d+)/);
                         if (urlMatch && urlMatch[1]) {
                             const placeId = urlMatch[1];
                             
-                            console.log('[Roblox Region Selector] Play button clicked, intercepting...');
+                            console.log('[Roblox Region Selector] Sending play button message for place:', placeId);
                             
                             // Send message to content script
                             window.postMessage({
                                 type: 'PLAY_BUTTON_CLICKED',
                                 placeId: placeId
                             }, window.location.origin);
+                        } else {
+                            console.error('[Roblox Region Selector] Could not extract place ID from URL');
                         }
                         
                         return false;
+                    } else {
+                        console.log('[Roblox Region Selector] Auto mode, allowing normal join');
                     }
                     // If auto mode, let Roblox handle it normally
                 }, true); // Use capture phase to intercept before Roblox
@@ -68,48 +84,36 @@
         });
     }
     
-    // More specific observer to reduce false positives
+    // Setup observer with retry mechanism
     function setupPlayButtonObserver() {
+        console.log('[Roblox Region Selector] Setting up play button observer');
+        
         // Run interceptor immediately
         interceptPlayButton();
         
-        // Watch for new buttons being added to specific containers
-        const observer = new MutationObserver((mutations) => {
-            // Only check if mutations include button elements or their containers
-            let shouldCheck = false;
-            for (const mutation of mutations) {
-                if (mutation.addedNodes.length > 0) {
-                    for (const node of mutation.addedNodes) {
-                        if (node.nodeType === 1) { // Element node
-                            if (node.tagName === 'BUTTON' || node.querySelector('button')) {
-                                shouldCheck = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-                if (shouldCheck) break;
-            }
+        // Keep trying to find and attach to the button every 500ms for the first 10 seconds
+        let attempts = 0;
+        const maxAttempts = 20;
+        const retryInterval = setInterval(() => {
+            attempts++;
+            interceptPlayButton();
             
-            if (shouldCheck) {
-                interceptPlayButton();
+            if (attempts >= maxAttempts) {
+                clearInterval(retryInterval);
+                console.log('[Roblox Region Selector] Stopped retry attempts');
             }
+        }, 500);
+        
+        // Watch for new buttons being added
+        const observer = new MutationObserver((mutations) => {
+            interceptPlayButton();
         });
         
-        // Only observe the main game container, not the entire body
-        const gameContainer = document.querySelector('#game-detail-page, [class*="game-detail"], main');
-        if (gameContainer) {
-            observer.observe(gameContainer, {
-                childList: true,
-                subtree: true
-            });
-        } else {
-            // Fallback to body if specific container not found
-            observer.observe(document.body, {
-                childList: true,
-                subtree: true
-            });
-        }
+        // Observe the entire document for changes
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
     }
     
     // Wait for page to be ready
