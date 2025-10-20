@@ -19,12 +19,22 @@
         }
     });
     
-    // Intercept Play button clicks
+    // Intercept ONLY the Play button on game pages
     function interceptPlayButton() {
-        // Find all play buttons and add click listeners
-        const playButtons = document.querySelectorAll('[class*="play"], [class*="Play"], button[class*="btn-"]');
+        // Target ONLY the main play button on game detail pages
+        // Look for the button that contains "Play" or has specific Roblox play button classes
+        const playButtons = document.querySelectorAll('button[class*="PlayButton"], button[class*="play-button"]');
         
         playButtons.forEach(button => {
+            // Additional check: button should contain "Play" text or have play icon
+            const buttonText = button.textContent.trim().toLowerCase();
+            const hasPlayText = buttonText === 'play' || buttonText.includes('play');
+            
+            // Skip if this doesn't look like the main play button
+            if (!hasPlayText && !button.querySelector('[class*="play-icon"], [class*="PlayIcon"]')) {
+                return;
+            }
+            
             if (!button.dataset.regionSelectorAttached) {
                 button.dataset.regionSelectorAttached = 'true';
                 
@@ -41,6 +51,8 @@
                         if (urlMatch && urlMatch[1]) {
                             const placeId = urlMatch[1];
                             
+                            console.log('[Roblox Region Selector] Play button clicked, intercepting...');
+                            
                             // Send message to content script
                             window.postMessage({
                                 type: 'PLAY_BUTTON_CLICKED',
@@ -56,18 +68,56 @@
         });
     }
     
-    // Run interceptor immediately and on DOM changes
-    interceptPlayButton();
-    
-    // Watch for new buttons being added to the page
-    const observer = new MutationObserver((mutations) => {
+    // More specific observer to reduce false positives
+    function setupPlayButtonObserver() {
+        // Run interceptor immediately
         interceptPlayButton();
-    });
+        
+        // Watch for new buttons being added to specific containers
+        const observer = new MutationObserver((mutations) => {
+            // Only check if mutations include button elements or their containers
+            let shouldCheck = false;
+            for (const mutation of mutations) {
+                if (mutation.addedNodes.length > 0) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.nodeType === 1) { // Element node
+                            if (node.tagName === 'BUTTON' || node.querySelector('button')) {
+                                shouldCheck = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (shouldCheck) break;
+            }
+            
+            if (shouldCheck) {
+                interceptPlayButton();
+            }
+        });
+        
+        // Only observe the main game container, not the entire body
+        const gameContainer = document.querySelector('#game-detail-page, [class*="game-detail"], main');
+        if (gameContainer) {
+            observer.observe(gameContainer, {
+                childList: true,
+                subtree: true
+            });
+        } else {
+            // Fallback to body if specific container not found
+            observer.observe(document.body, {
+                childList: true,
+                subtree: true
+            });
+        }
+    }
     
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
+    // Wait for page to be ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupPlayButtonObserver);
+    } else {
+        setupPlayButtonObserver();
+    }
     
     // Listen for messages from content script to join specific servers
     window.addEventListener('message', function(event) {

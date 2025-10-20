@@ -8,13 +8,30 @@
   let currentRegion = 'auto';
   let isSearching = false;
 
-  // Get current region preference from background script
-  chrome.runtime.sendMessage({action: 'getRegion'}, function(response) {
-    if (response && response.region) {
-      currentRegion = response.region;
-      console.log('[Roblox Region Selector] Current region preference:', currentRegion);
+  // Load region preference from storage on startup
+  function loadRegionPreference() {
+    chrome.storage.local.get(['preferredRegion'], function(result) {
+      currentRegion = result.preferredRegion || 'auto';
+      console.log('[Roblox Region Selector] Loaded region preference:', currentRegion);
       
       // Notify page context about the preference
+      window.postMessage({
+        type: 'UPDATE_REGION_PREFERENCE',
+        region: currentRegion
+      }, window.location.origin);
+    });
+  }
+
+  // Load preference immediately
+  loadRegionPreference();
+
+  // Listen for storage changes (when user updates preference from popup)
+  chrome.storage.onChanged.addListener(function(changes, namespace) {
+    if (namespace === 'local' && changes.preferredRegion) {
+      currentRegion = changes.preferredRegion.newValue || 'auto';
+      console.log('[Roblox Region Selector] Region preference updated to:', currentRegion);
+      
+      // Notify page context about the new preference
       window.postMessage({
         type: 'UPDATE_REGION_PREFERENCE',
         region: currentRegion
@@ -22,7 +39,7 @@
     }
   });
 
-  // Listen for region changes from popup
+  // Listen for region changes from popup (backup method)
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'regionChanged') {
       currentRegion = message.region;
