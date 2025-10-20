@@ -152,6 +152,15 @@
       return null;
     }
     
+    // Determine max server size from the fetched servers
+    const maxServerSize = Math.max(...allServers.map(s => s.maxPlayers || 0));
+    console.log('[Roblox Region Selector] Max server size:', maxServerSize);
+    
+    // Calculate ideal player count range: maxSize/2 to maxSize/1.3
+    const minIdealPlayers = Math.floor(maxServerSize / 2);
+    const maxIdealPlayers = Math.floor(maxServerSize / 1.3);
+    console.log('[Roblox Region Selector] Ideal player range:', minIdealPlayers, '-', maxIdealPlayers);
+    
     console.log('[Roblox Region Selector] Found', allServers.length, 'servers total');
     updateSearchingPopup(`Checking regions for ${allServers.length} servers...`, false);
     
@@ -175,24 +184,18 @@
       const batchResults = await Promise.all(batchPromises);
       serversWithRegions.push(...batchResults);
       
-      // If we found a matching server in the preferred region, we can stop early
-      const matchingServer = batchResults.find(s => s.region === regionCode);
-      if (matchingServer) {
-        console.log('[Roblox Region Selector] Found matching server early:', matchingServer.id);
+      // If we found a matching server in the preferred region with ideal player count, we can stop early
+      const idealServer = batchResults.find(s => 
+        s.region === regionCode && 
+        s.playing >= minIdealPlayers && 
+        s.playing <= maxIdealPlayers
+      );
+      
+      if (idealServer) {
+        console.log('[Roblox Region Selector] Found ideal server early:', idealServer.id, 'with', idealServer.playing, 'players');
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         console.log(`[Roblox Region Selector] Search completed in ${elapsed}s`);
-        
-        // Return a medium-sized server (10-20 players if possible)
-        const mediumServers = serversWithRegions.filter(s => 
-          s.region === regionCode && s.playing >= 10 && s.playing <= 20
-        );
-        
-        if (mediumServers.length > 0) {
-          return mediumServers[0];
-        }
-        
-        // Otherwise return any matching server
-        return matchingServer;
+        return idealServer;
       }
     }
     
@@ -209,21 +212,41 @@
     
     console.log('[Roblox Region Selector] Found', matchingServers.length, 'servers in', regionCode);
     
-    // Prefer medium-sized servers (10-20 players)
-    const mediumServers = matchingServers.filter(s => s.playing >= 10 && s.playing <= 20);
-    if (mediumServers.length > 0) {
-      console.log('[Roblox Region Selector] Selecting medium-sized server');
-      return mediumServers[0];
+    // Prefer servers in the ideal player count range
+    const idealServers = matchingServers.filter(s => 
+      s.playing >= minIdealPlayers && s.playing <= maxIdealPlayers
+    );
+    
+    if (idealServers.length > 0) {
+      console.log('[Roblox Region Selector] Selecting ideal server with', idealServers[0].playing, 'players');
+      return idealServers[0];
     }
     
-    // Otherwise prefer servers with some players (5-30)
-    const populatedServers = matchingServers.filter(s => s.playing >= 5 && s.playing <= 30);
-    if (populatedServers.length > 0) {
-      console.log('[Roblox Region Selector] Selecting populated server');
-      return populatedServers[0];
+    // If no ideal servers, prefer servers closer to the ideal range (above minIdeal or below maxIdeal)
+    const decentServers = matchingServers.filter(s => 
+      s.playing >= Math.floor(minIdealPlayers * 0.7) && s.playing <= maxServerSize
+    );
+    
+    if (decentServers.length > 0) {
+      // Sort by how close they are to the ideal range
+      decentServers.sort((a, b) => {
+        const aDist = Math.min(
+          Math.abs(a.playing - minIdealPlayers),
+          Math.abs(a.playing - maxIdealPlayers)
+        );
+        const bDist = Math.min(
+          Math.abs(b.playing - minIdealPlayers),
+          Math.abs(b.playing - maxIdealPlayers)
+        );
+        return aDist - bDist;
+      });
+      
+      console.log('[Roblox Region Selector] Selecting decent server with', decentServers[0].playing, 'players');
+      return decentServers[0];
     }
     
     // Last resort: return any matching server
+    console.log('[Roblox Region Selector] Selecting any available server');
     return matchingServers[0];
   }
 
