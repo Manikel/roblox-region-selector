@@ -46,25 +46,26 @@ document.addEventListener('DOMContentLoaded', function() {
     'ap': 'Asia Pacific'
   };
 
-  // Actual Roblox server IPs for each region (from background.js REGION_IP_RANGES)
-  const REGION_TEST_IPS = {
-    'seattle': '128.116.115.1',
-    'losangeles': '128.116.116.1',
-    'dallas': '128.116.95.1',
-    'chicago': '128.116.101.1',
-    'atlanta': '128.116.22.1',
-    'miami': '128.116.45.1',
-    'ashburn': '128.116.102.1',
-    'newyork': '128.116.32.1',
-    'london': '128.116.33.1',
-    'amsterdam': '128.116.21.1',
-    'paris': '128.116.4.1',
-    'frankfurt': '128.116.5.1',
-    'warsaw': '128.116.31.1',
-    'mumbai': '128.116.104.1',
-    'tokyo': '128.116.55.1',
-    'singapore': '128.116.50.1',
-    'sydney': '128.116.51.1'
+  // CloudFlare speed test endpoints for specific data centers
+  // These route to ACTUAL regional data centers, not the nearest one
+  const REGION_TEST_ENDPOINTS = {
+    'seattle': 'https://sea.speedtest.cloudflare.com/__down?bytes=100000',
+    'losangeles': 'https://lax.speedtest.cloudflare.com/__down?bytes=100000',
+    'dallas': 'https://dfw.speedtest.cloudflare.com/__down?bytes=100000',
+    'chicago': 'https://ord.speedtest.cloudflare.com/__down?bytes=100000',
+    'atlanta': 'https://atl.speedtest.cloudflare.com/__down?bytes=100000',
+    'miami': 'https://mia.speedtest.cloudflare.com/__down?bytes=100000',
+    'ashburn': 'https://iad.speedtest.cloudflare.com/__down?bytes=100000',
+    'newyork': 'https://ewr.speedtest.cloudflare.com/__down?bytes=100000',
+    'london': 'https://lhr.speedtest.cloudflare.com/__down?bytes=100000',
+    'amsterdam': 'https://ams.speedtest.cloudflare.com/__down?bytes=100000',
+    'paris': 'https://cdg.speedtest.cloudflare.com/__down?bytes=100000',
+    'frankfurt': 'https://fra.speedtest.cloudflare.com/__down?bytes=100000',
+    'warsaw': 'https://waw.speedtest.cloudflare.com/__down?bytes=100000',
+    'mumbai': 'https://bom.speedtest.cloudflare.com/__down?bytes=100000',
+    'tokyo': 'https://nrt.speedtest.cloudflare.com/__down?bytes=100000',
+    'singapore': 'https://sin.speedtest.cloudflare.com/__down?bytes=100000',
+    'sydney': 'https://syd.speedtest.cloudflare.com/__down?bytes=100000'
   };
 
   // Initialize dropdown
@@ -274,39 +275,33 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   async function measurePingToRegion(regionCode) {
-    const ip = REGION_TEST_IPS[regionCode];
-    if (!ip) return null;
+    const endpoint = REGION_TEST_ENDPOINTS[regionCode];
+    if (!endpoint) return null;
 
     try {
-      // Use WebSocket to measure actual network latency to Roblox server IP
       const startTime = performance.now();
       
-      // Try to make a HEAD request with a short timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      try {
-        // Attempt to fetch from the Roblox server IP
-        // Note: This will likely fail due to CORS, but the timing before failure gives us the ping
-        await fetch(`http://${ip}:80`, {
-          method: 'HEAD',
-          mode: 'no-cors',
-          cache: 'no-store',
-          signal: controller.signal
-        });
-      } catch (e) {
-        // Expected to fail, but we got timing info
-      }
+      await fetch(endpoint, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: controller.signal
+      });
       
       clearTimeout(timeoutId);
       const endTime = performance.now();
+      
+      // Calculate actual round-trip time
       const ping = Math.round(endTime - startTime);
       
-      // Clamp to reasonable values (CORS failures can give weird timings)
-      return Math.min(Math.max(ping, 1), 500);
+      return Math.min(Math.max(ping, 1), 999);
       
     } catch (error) {
-      // If measurement completely fails, return null
+      if (error.name === 'AbortError') {
+        return 999; // Timeout
+      }
       return null;
     }
   }
@@ -316,8 +311,8 @@ document.addEventListener('DOMContentLoaded', function() {
     pingStatus.style.display = 'block';
     pingStatus.style.color = '#888';
 
-    const regions = Object.keys(REGION_TEST_IPS);
-    const batchSize = 3; // Reduced batch size for more accurate measurements
+    const regions = Object.keys(REGION_TEST_ENDPOINTS);
+    const batchSize = 4;
     let completed = 0;
 
     for (let i = 0; i < regions.length; i += batchSize) {
@@ -330,7 +325,6 @@ document.addEventListener('DOMContentLoaded', function() {
           regionPings[regionCode] = ping;
           updatePingDisplay(regionCode, ping);
         } else {
-          // Show "N/A" if ping measurement failed
           updatePingDisplay(regionCode, null);
         }
         
@@ -338,8 +332,7 @@ document.addEventListener('DOMContentLoaded', function() {
         pingStatus.textContent = `Measuring latency... (${completed}/${regions.length})`;
       }));
       
-      // Small delay between batches to avoid overwhelming the browser
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     pingStatus.textContent = 'Latency measurements complete ✓';
