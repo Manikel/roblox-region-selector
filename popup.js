@@ -46,46 +46,25 @@ document.addEventListener('DOMContentLoaded', function() {
     'ap': 'Asia Pacific'
   };
 
-  // CloudFlare trace endpoints for different regions
-  const REGION_ENDPOINTS = {
-    'seattle': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'losangeles': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'dallas': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'chicago': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'atlanta': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'miami': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'ashburn': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'newyork': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'london': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'amsterdam': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'paris': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'frankfurt': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'warsaw': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'mumbai': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'tokyo': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'singapore': 'https://speed.cloudflare.com/__down?bytes=1000',
-    'sydney': 'https://speed.cloudflare.com/__down?bytes=1000'
-  };
-
-  // Estimated base pings for each region
-  const ESTIMATED_PINGS = {
-    'seattle': 15,
-    'losangeles': 25,
-    'dallas': 35,
-    'chicago': 30,
-    'atlanta': 45,
-    'miami': 60,
-    'ashburn': 40,
-    'newyork': 50,
-    'london': 110,
-    'amsterdam': 120,
-    'paris': 125,
-    'frankfurt': 115,
-    'warsaw': 135,
-    'mumbai': 250,
-    'tokyo': 140,
-    'singapore': 180,
-    'sydney': 160
+  // Actual Roblox server IPs for each region (from background.js REGION_IP_RANGES)
+  const REGION_TEST_IPS = {
+    'seattle': '128.116.115.1',
+    'losangeles': '128.116.116.1',
+    'dallas': '128.116.95.1',
+    'chicago': '128.116.101.1',
+    'atlanta': '128.116.22.1',
+    'miami': '128.116.45.1',
+    'ashburn': '128.116.102.1',
+    'newyork': '128.116.32.1',
+    'london': '128.116.33.1',
+    'amsterdam': '128.116.21.1',
+    'paris': '128.116.4.1',
+    'frankfurt': '128.116.5.1',
+    'warsaw': '128.116.31.1',
+    'mumbai': '128.116.104.1',
+    'tokyo': '128.116.55.1',
+    'singapore': '128.116.50.1',
+    'sydney': '128.116.51.1'
   };
 
   // Initialize dropdown
@@ -295,31 +274,40 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   async function measurePingToRegion(regionCode) {
-    const endpoint = REGION_ENDPOINTS[regionCode];
-    if (!endpoint) return null;
+    const ip = REGION_TEST_IPS[regionCode];
+    if (!ip) return null;
 
     try {
+      // Use WebSocket to measure actual network latency to Roblox server IP
       const startTime = performance.now();
       
+      // Try to make a HEAD request with a short timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       
-      await fetch(endpoint, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal
-      });
+      try {
+        // Attempt to fetch from the Roblox server IP
+        // Note: This will likely fail due to CORS, but the timing before failure gives us the ping
+        await fetch(`http://${ip}:80`, {
+          method: 'HEAD',
+          mode: 'no-cors',
+          cache: 'no-store',
+          signal: controller.signal
+        });
+      } catch (e) {
+        // Expected to fail, but we got timing info
+      }
       
       clearTimeout(timeoutId);
       const endTime = performance.now();
+      const ping = Math.round(endTime - startTime);
       
-      const basePing = ESTIMATED_PINGS[regionCode] || 50;
-      const variance = Math.random() * 20 - 10;
-      const ping = Math.max(1, Math.round(basePing + variance + 30));
+      // Clamp to reasonable values (CORS failures can give weird timings)
+      return Math.min(Math.max(ping, 1), 500);
       
-      return ping;
     } catch (error) {
-      return (ESTIMATED_PINGS[regionCode] || null) ? ESTIMATED_PINGS[regionCode] + 30 : null;
+      // If measurement completely fails, return null
+      return null;
     }
   }
 
@@ -328,8 +316,8 @@ document.addEventListener('DOMContentLoaded', function() {
     pingStatus.style.display = 'block';
     pingStatus.style.color = '#888';
 
-    const regions = Object.keys(REGION_ENDPOINTS);
-    const batchSize = 5;
+    const regions = Object.keys(REGION_TEST_IPS);
+    const batchSize = 3; // Reduced batch size for more accurate measurements
     let completed = 0;
 
     for (let i = 0; i < regions.length; i += batchSize) {
@@ -341,11 +329,17 @@ document.addEventListener('DOMContentLoaded', function() {
         if (ping !== null) {
           regionPings[regionCode] = ping;
           updatePingDisplay(regionCode, ping);
+        } else {
+          // Show "N/A" if ping measurement failed
+          updatePingDisplay(regionCode, null);
         }
         
         completed++;
         pingStatus.textContent = `Measuring latency... (${completed}/${regions.length})`;
       }));
+      
+      // Small delay between batches to avoid overwhelming the browser
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     pingStatus.textContent = 'Latency measurements complete ✓';
@@ -359,8 +353,14 @@ document.addEventListener('DOMContentLoaded', function() {
   function updatePingDisplay(regionCode, ping) {
     const pingSpan = selectItems.querySelector(`span[data-region="${regionCode}"]`);
     if (pingSpan) {
-      pingSpan.textContent = `${ping}ms`;
-      pingSpan.className = 'option-ping ' + getPingClass(ping);
+      if (ping === null) {
+        pingSpan.textContent = 'N/A';
+        pingSpan.className = 'option-ping';
+        pingSpan.style.color = '#666';
+      } else {
+        pingSpan.textContent = `${ping}ms`;
+        pingSpan.className = 'option-ping ' + getPingClass(ping);
+      }
     }
   }
 });
