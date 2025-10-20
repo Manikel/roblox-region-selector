@@ -279,29 +279,52 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!endpoint) return null;
 
     try {
-      const startTime = performance.now();
+      // Measure multiple times and take average for accuracy
+      const measurements = [];
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      for (let i = 0; i < 3; i++) {
+        const startTime = performance.now();
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        try {
+          const response = await fetch(endpoint, {
+            method: 'GET',
+            cache: 'no-store',
+            mode: 'cors',
+            signal: controller.signal
+          });
+          
+          clearTimeout(timeoutId);
+          
+          // Make sure we actually got data
+          if (response.ok) {
+            await response.blob(); // Read the response to complete the request
+            const endTime = performance.now();
+            const ping = Math.round(endTime - startTime);
+            measurements.push(ping);
+          }
+        } catch (e) {
+          clearTimeout(timeoutId);
+          // If this measurement fails, try next one
+          continue;
+        }
+        
+        // Small delay between measurements
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
       
-      await fetch(endpoint, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: controller.signal
-      });
+      // If we got at least one measurement, return the average
+      if (measurements.length > 0) {
+        const avgPing = Math.round(measurements.reduce((a, b) => a + b, 0) / measurements.length);
+        return Math.min(Math.max(avgPing, 1), 999);
+      }
       
-      clearTimeout(timeoutId);
-      const endTime = performance.now();
-      
-      // Calculate actual round-trip time
-      const ping = Math.round(endTime - startTime);
-      
-      return Math.min(Math.max(ping, 1), 999);
+      return null;
       
     } catch (error) {
-      if (error.name === 'AbortError') {
-        return 999; // Timeout
-      }
+      console.error(`Ping measurement failed for ${regionCode}:`, error);
       return null;
     }
   }
