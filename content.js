@@ -105,8 +105,8 @@
     showSearchingPopup();
 
     try {
-      // Find a server in the preferred region
-      const server = await findServerInRegion(placeId, currentRegion);
+      // Find a server in the preferred region using fast parallel method
+      const server = await findServerInRegionFast(placeId, currentRegion);
       
       if (server) {
         updateSearchingPopup('Found server! Joining...', false);
@@ -140,13 +140,100 @@
     }
   }
 
-  async function findServerInRegion(placeId, regionCode) {
-    const maxPages = 3; // Check up to 3 pages of servers
+  async function findServerInRegionFast(placeId, regionCode) {
+    const startTime = Date.now();
+    updateSearchingPopup('Fetching server list...', false);
+    
+    // Fetch all available servers (up to 500)
+    const allServers = await fetchAllServers(placeId);
+    
+    if (!allServers || allServers.length === 0) {
+      console.log('[Roblox Region Selector] No servers found');
+      return null;
+    }
+    
+    console.log('[Roblox Region Selector] Found', allServers.length, 'servers total');
+    updateSearchingPopup(`Checking regions for ${allServers.length} servers...`, false);
+    
+    // Check all servers in parallel (batch of 20 at a time to avoid overwhelming)
+    const batchSize = 20;
+    const serversWithRegions = [];
+    
+    for (let i = 0; i < allServers.length; i += batchSize) {
+      const batch = allServers.slice(i, i + batchSize);
+      const progress = Math.min(i + batchSize, allServers.length);
+      updateSearchingPopup(`Analyzing servers... (${progress}/${allServers.length})`, false);
+      
+      // Check all servers in this batch in parallel
+      const batchPromises = batch.map(server => 
+        getServerRegion(placeId, server.id).then(region => ({
+          ...server,
+          region: region
+        }))
+      );
+      
+      const batchResults = await Promise.all(batchPromises);
+      serversWithRegions.push(...batchResults);
+      
+      // If we found a matching server in the preferred region, we can stop early
+      const matchingServer = batchResults.find(s => s.region === regionCode);
+      if (matchingServer) {
+        console.log('[Roblox Region Selector] Found matching server early:', matchingServer.id);
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[Roblox Region Selector] Search completed in ${elapsed}s`);
+        
+        // Return a medium-sized server (10-20 players if possible)
+        const mediumServers = serversWithRegions.filter(s => 
+          s.region === regionCode && s.playing >= 10 && s.playing <= 20
+        );
+        
+        if (mediumServers.length > 0) {
+          return mediumServers[0];
+        }
+        
+        // Otherwise return any matching server
+        return matchingServer;
+      }
+    }
+    
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`[Roblox Region Selector] Search completed in ${elapsed}s`);
+    
+    // Filter servers by region
+    const matchingServers = serversWithRegions.filter(s => s.region === regionCode);
+    
+    if (matchingServers.length === 0) {
+      console.log('[Roblox Region Selector] No matching servers found for region:', regionCode);
+      return null;
+    }
+    
+    console.log('[Roblox Region Selector] Found', matchingServers.length, 'servers in', regionCode);
+    
+    // Prefer medium-sized servers (10-20 players)
+    const mediumServers = matchingServers.filter(s => s.playing >= 10 && s.playing <= 20);
+    if (mediumServers.length > 0) {
+      console.log('[Roblox Region Selector] Selecting medium-sized server');
+      return mediumServers[0];
+    }
+    
+    // Otherwise prefer servers with some players (5-30)
+    const populatedServers = matchingServers.filter(s => s.playing >= 5 && s.playing <= 30);
+    if (populatedServers.length > 0) {
+      console.log('[Roblox Region Selector] Selecting populated server');
+      return populatedServers[0];
+    }
+    
+    // Last resort: return any matching server
+    return matchingServers[0];
+  }
+
+  async function fetchAllServers(placeId) {
+    const allServers = [];
     let cursor = '';
+    const maxPages = 5; // Fetch up to 500 servers (5 pages x 100)
     
     for (let page = 0; page < maxPages; page++) {
       try {
-        // Fetch server list
         const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100${cursor ? '&cursor=' + cursor : ''}`;
         const response = await fetch(url);
         
@@ -160,27 +247,8 @@
         if (!data.data || data.data.length === 0) {
           break;
         }
-
-        updateSearchingPopup(`Checking servers (page ${page + 1})...`, false);
         
-        // Check each server in this page
-        for (const server of data.data) {
-          // Get server details from background script
-          const details = await new Promise((resolve) => {
-            chrome.runtime.sendMessage({
-              action: 'getServerDetails',
-              placeId: placeId,
-              serverId: server.id
-            }, (response) => {
-              resolve(response);
-            });
-          });
-          
-          if (details && details.success && details.region === regionCode) {
-            console.log('[Roblox Region Selector] Found matching server:', server.id, 'IP:', details.serverIP);
-            return server;
-          }
-        }
+        allServers.push(...data.data);
         
         // Move to next page if available
         if (data.nextPageCursor) {
@@ -189,12 +257,35 @@
           break;
         }
       } catch (error) {
-        console.error('[Roblox Region Selector] Error fetching page:', error);
+        console.error('[Roblox Region Selector] Error fetching servers:', error);
         break;
       }
     }
     
-    return null;
+    return allServers;
+  }
+
+  async function getServerRegion(placeId, serverId) {
+    try {
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          action: 'getServerDetails',
+          placeId: placeId,
+          serverId: serverId
+        }, (response) => {
+          resolve(response);
+        });
+      });
+      
+      if (response && response.success && response.region) {
+        return response.region;
+      }
+      
+      return 'unknown';
+    } catch (error) {
+      console.error('[Roblox Region Selector] Error getting server region:', error);
+      return 'unknown';
+    }
   }
 
   function showSearchingPopup() {
@@ -216,7 +307,7 @@
       font-size: 16px;
       z-index: 999999;
       box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-      min-width: 300px;
+      min-width: 350px;
       text-align: center;
       border: 2px solid #3a3a3a;
     `;
