@@ -49,23 +49,23 @@ document.addEventListener('DOMContentLoaded', function() {
   // Use a simpler approach: estimate pings based on typical latencies from user's location
   // We'll detect their rough location and calculate expected pings
   const BASE_PINGS = {
-    'seattle': { 'na-west': 15, 'na-central': 50, 'na-east': 80, 'eu': 150, 'me': 250, 'asia': 140, 'oceania': 180 },
-    'losangeles': { 'na-west': 20, 'na-central': 45, 'na-east': 75, 'eu': 160, 'me': 260, 'asia': 130, 'oceania': 150 },
-    'dallas': { 'na-west': 50, 'na-central': 15, 'na-east': 40, 'eu': 130, 'me': 240, 'asia': 180, 'oceania': 200 },
-    'chicago': { 'na-west': 55, 'na-central': 20, 'na-east': 30, 'eu': 110, 'me': 230, 'asia': 190, 'oceania': 210 },
-    'atlanta': { 'na-west': 70, 'na-central': 35, 'na-east': 20, 'eu': 110, 'me': 220, 'asia': 210, 'oceania': 230 },
-    'miami': { 'na-west': 80, 'na-central': 45, 'na-east': 25, 'eu': 120, 'me': 230, 'asia': 230, 'oceania': 240 },
-    'ashburn': { 'na-west': 75, 'na-central': 40, 'na-east': 15, 'eu': 90, 'me': 200, 'asia': 200, 'oceania': 220 },
-    'newyork': { 'na-west': 80, 'na-central': 45, 'na-east': 10, 'eu': 85, 'me': 190, 'asia': 210, 'oceania': 230 },
-    'london': { 'na-west': 150, 'na-central': 120, 'na-east': 85, 'eu': 15, 'me': 90, 'asia': 180, 'oceania': 280 },
-    'amsterdam': { 'na-west': 160, 'na-central': 130, 'na-east': 90, 'eu': 10, 'me': 95, 'asia': 185, 'oceania': 290 },
-    'paris': { 'na-west': 155, 'na-central': 125, 'na-east': 88, 'eu': 12, 'me': 92, 'asia': 190, 'oceania': 285 },
-    'frankfurt': { 'na-west': 165, 'na-central': 135, 'na-east': 95, 'eu': 8, 'me': 85, 'asia': 175, 'oceania': 295 },
-    'warsaw': { 'na-west': 175, 'na-central': 145, 'na-east': 105, 'eu': 20, 'me': 80, 'asia': 165, 'oceania': 305 },
-    'mumbai': { 'na-west': 250, 'na-central': 240, 'na-east': 220, 'eu': 120, 'me': 60, 'asia': 90, 'oceania': 150 },
-    'tokyo': { 'na-west': 110, 'na-central': 160, 'na-east': 190, 'eu': 240, 'me': 200, 'asia': 30, 'oceania': 110 },
-    'singapore': { 'na-west': 180, 'na-central': 220, 'na-east': 240, 'eu': 170, 'me': 100, 'asia': 20, 'oceania': 90 },
-    'sydney': { 'na-west': 150, 'na-central': 200, 'na-east': 230, 'eu': 280, 'me': 260, 'asia': 110, 'oceania': 15 }
+    'seattle': { 'na-west': 25, 'na-central': 60, 'na-east': 90, 'eu': 160, 'me': 260, 'asia': 150, 'oceania': 190 },
+    'losangeles': { 'na-west': 30, 'na-central': 55, 'na-east': 85, 'eu': 170, 'me': 270, 'asia': 140, 'oceania': 160 },
+    'dallas': { 'na-west': 60, 'na-central': 25, 'na-east': 50, 'eu': 140, 'me': 250, 'asia': 190, 'oceania': 210 },
+    'chicago': { 'na-west': 65, 'na-central': 30, 'na-east': 40, 'eu': 120, 'me': 240, 'asia': 200, 'oceania': 220 },
+    'atlanta': { 'na-west': 80, 'na-central': 45, 'na-east': 30, 'eu': 120, 'me': 230, 'asia': 220, 'oceania': 240 },
+    'miami': { 'na-west': 90, 'na-central': 55, 'na-east': 35, 'eu': 130, 'me': 240, 'asia': 240, 'oceania': 250 },
+    'ashburn': { 'na-west': 85, 'na-central': 50, 'na-east': 25, 'eu': 100, 'me': 210, 'asia': 210, 'oceania': 230 },
+    'newyork': { 'na-west': 90, 'na-central': 55, 'na-east': 20, 'eu': 95, 'me': 200, 'asia': 220, 'oceania': 240 },
+    'london': { 'na-west': 160, 'na-central': 130, 'na-east': 95, 'eu': 25, 'me': 100, 'asia': 190, 'oceania': 290 },
+    'amsterdam': { 'na-west': 170, 'na-central': 140, 'na-east': 100, 'eu': 20, 'me': 105, 'asia': 195, 'oceania': 300 },
+    'paris': { 'na-west': 165, 'na-central': 135, 'na-east': 98, 'eu': 22, 'me': 102, 'asia': 200, 'oceania': 295 },
+    'frankfurt': { 'na-west': 175, 'na-central': 145, 'na-east': 105, 'eu': 18, 'me': 95, 'asia': 185, 'oceania': 305 },
+    'warsaw': { 'na-west': 185, 'na-central': 155, 'na-east': 115, 'eu': 30, 'me': 90, 'asia': 175, 'oceania': 315 },
+    'mumbai': { 'na-west': 260, 'na-central': 250, 'na-east': 230, 'eu': 130, 'me': 70, 'asia': 100, 'oceania': 160 },
+    'tokyo': { 'na-west': 120, 'na-central': 170, 'na-east': 200, 'eu': 250, 'me': 210, 'asia': 40, 'oceania': 120 },
+    'singapore': { 'na-west': 190, 'na-central': 230, 'na-east': 250, 'eu': 180, 'me': 110, 'asia': 30, 'oceania': 100 },
+    'sydney': { 'na-west': 160, 'na-central': 210, 'na-east': 240, 'eu': 290, 'me': 270, 'asia': 120, 'oceania': 25 }
   };
 
   // Initialize dropdown
