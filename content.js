@@ -153,26 +153,49 @@
     const serversWithRegions = [];
     let totalServersFetched = 0;
     
+    // Helper function to add delay between requests to avoid rate limiting
+    const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+    
     // Fetch first page to determine max server size
     try {
       const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100`;
       const response = await fetch(url);
       
       if (!response.ok) {
-        console.error('[Roblox Region Selector] Failed to fetch initial servers:', response.status);
-        return null;
+        if (response.status === 429) {
+          updateSearchingPopup('Rate limited by Roblox. Waiting 3 seconds...', false);
+          await delay(3000);
+          // Retry once after rate limit
+          const retryResponse = await fetch(url);
+          if (!retryResponse.ok) {
+            console.error('[Roblox Region Selector] Failed to fetch initial servers after retry:', retryResponse.status);
+            return null;
+          }
+          const retryData = await retryResponse.json();
+          if (!retryData.data || retryData.data.length === 0) {
+            console.log('[Roblox Region Selector] No servers found');
+            return null;
+          }
+          maxServerSize = Math.max(...retryData.data.map(s => s.maxPlayers || 0));
+          cursor = retryData.nextPageCursor || '';
+          totalServersFetched = retryData.data.length;
+        } else {
+          console.error('[Roblox Region Selector] Failed to fetch initial servers:', response.status);
+          return null;
+        }
+      } else {
+        const data = await response.json();
+        
+        if (!data.data || data.data.length === 0) {
+          console.log('[Roblox Region Selector] No servers found');
+          return null;
+        }
+        
+        // Get max server size from first page
+        maxServerSize = Math.max(...data.data.map(s => s.maxPlayers || 0));
+        cursor = data.nextPageCursor || '';
+        totalServersFetched = data.data.length;
       }
-      
-      const data = await response.json();
-      
-      if (!data.data || data.data.length === 0) {
-        console.log('[Roblox Region Selector] No servers found');
-        return null;
-      }
-      
-      // Get max server size from first page
-      maxServerSize = Math.max(...data.data.map(s => s.maxPlayers || 0));
-      cursor = data.nextPageCursor || '';
       
       console.log('[Roblox Region Selector] Max server size:', maxServerSize);
       
@@ -181,42 +204,68 @@
       const maxIdealPlayers = Math.floor(maxServerSize / 1.3);
       console.log('[Roblox Region Selector] Ideal player range:', minIdealPlayers, '-', maxIdealPlayers);
       
-      // Process first batch
-      const batchSize = 50; // Increased from 20 to 50 for faster processing
-      totalServersFetched = data.data.length;
+      // Re-fetch first page data if we had to retry
+      const firstPageUrl = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100`;
+      const firstPageResponse = await fetch(firstPageUrl);
+      const firstPageData = await firstPageResponse.json();
+      
+      // Process first batch with rate limiting (30 at a time instead of 50)
+      const batchSize = 30;
       updateSearchingPopup(`Analyzing servers... (${totalServersFetched})`, false);
       
-      const batchPromises = data.data.map(server => 
-        getServerRegion(placeId, server.id).then(region => ({
-          ...server,
-          region: region
-        }))
-      );
-      
-      const batchResults = await Promise.all(batchPromises);
-      serversWithRegions.push(...batchResults);
-      
-      // Check if we found an ideal server in first batch
-      const idealServer = batchResults.find(s => 
-        s.region === regionCode && 
-        s.playing >= minIdealPlayers && 
-        s.playing <= maxIdealPlayers
-      );
-      
-      if (idealServer) {
-        console.log('[Roblox Region Selector] Found ideal server in first batch:', idealServer.id, 'with', idealServer.playing, 'players');
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[Roblox Region Selector] Search completed in ${elapsed}s`);
-        return idealServer;
+      // Split into smaller chunks to avoid overwhelming the API
+      for (let i = 0; i < firstPageData.data.length; i += batchSize) {
+        const batch = firstPageData.data.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(server => 
+          getServerRegion(placeId, server.id).then(region => ({
+            ...server,
+            region: region
+          }))
+        );
+        
+        const batchResults = await Promise.all(batchPromises);
+        serversWithRegions.push(...batchResults);
+        
+        // Check if we found an ideal server
+        const idealServer = batchResults.find(s => 
+          s.region === regionCode && 
+          s.playing >= minIdealPlayers && 
+          s.playing <= maxIdealPlayers
+        );
+        
+        if (idealServer) {
+          console.log('[Roblox Region Selector] Found ideal server in first batch:', idealServer.id, 'with', idealServer.playing, 'players');
+          const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+          console.log(`[Roblox Region Selector] Search completed in ${elapsed}s`);
+          return idealServer;
+        }
+        
+        // Small delay between batches to avoid rate limiting
+        if (i + batchSize < firstPageData.data.length) {
+          await delay(100);
+        }
       }
       
-      // Continue fetching and checking all remaining servers until we find one or run out
-      while (cursor) {
+      // Continue fetching and checking remaining servers
+      let pageCount = 1;
+      const maxPages = 20; // Reasonable limit to avoid infinite loops
+      
+      while (cursor && pageCount < maxPages) {
         try {
+          // Add delay before fetching next page
+          await delay(200);
+          
           const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100&cursor=${cursor}`;
           const response = await fetch(url);
           
           if (!response.ok) {
+            if (response.status === 429) {
+              console.log('[Roblox Region Selector] Rate limited, waiting 3 seconds...');
+              updateSearchingPopup('Rate limited. Waiting...', false);
+              await delay(3000);
+              continue; // Try again after delay
+            }
             console.error('[Roblox Region Selector] Failed to fetch servers:', response.status);
             break;
           }
@@ -230,7 +279,7 @@
           totalServersFetched += data.data.length;
           updateSearchingPopup(`Analyzing servers... (${totalServersFetched})`, false);
           
-          // Process this batch in parallel (50 at a time)
+          // Process this page in smaller batches
           for (let i = 0; i < data.data.length; i += batchSize) {
             const batch = data.data.slice(i, i + batchSize);
             
@@ -257,9 +306,15 @@
               console.log(`[Roblox Region Selector] Search completed in ${elapsed}s`);
               return idealServer;
             }
+            
+            // Small delay between batches
+            if (i + batchSize < data.data.length) {
+              await delay(100);
+            }
           }
           
           cursor = data.nextPageCursor || '';
+          pageCount++;
         } catch (error) {
           console.error('[Roblox Region Selector] Error fetching page:', error);
           break;
@@ -289,7 +344,7 @@
         return idealServers[0];
       }
       
-      // If no ideal servers, prefer servers closer to the ideal range (above minIdeal or below maxIdeal)
+      // If no ideal servers, prefer servers closer to the ideal range
       const decentServers = matchingServers.filter(s => 
         s.playing >= Math.floor(minIdealPlayers * 0.7) && s.playing <= maxServerSize
       );
@@ -488,4 +543,4 @@
     return regionNames[regionCode] || regionCode;
   }
 
-})();
+})(); 

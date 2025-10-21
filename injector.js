@@ -31,18 +31,24 @@
         
         let playButtons = [];
         for (const selector of selectors) {
-            const buttons = document.querySelectorAll(selector);
-            buttons.forEach(btn => {
-                if (!playButtons.includes(btn)) {
-                    playButtons.push(btn);
-                }
-            });
+            try {
+                const buttons = document.querySelectorAll(selector);
+                buttons.forEach(btn => {
+                    if (btn && !playButtons.includes(btn)) {
+                        playButtons.push(btn);
+                    }
+                });
+            } catch (e) {
+                console.error('[Roblox Region Selector] Error with selector:', selector, e);
+            }
         }
         
         console.log('[Roblox Region Selector] Found', playButtons.length, 'play buttons');
         
         playButtons.forEach(button => {
-            if (!button.dataset.regionSelectorAttached) {
+            if (!button || button.dataset.regionSelectorAttached) return;
+            
+            try {
                 button.dataset.regionSelectorAttached = 'true';
                 console.log('[Roblox Region Selector] Attached listener to play button');
                 
@@ -80,6 +86,8 @@
                     }
                     // If auto mode, let Roblox handle it normally
                 }, true); // Use capture phase to intercept before Roblox
+            } catch (e) {
+                console.error('[Roblox Region Selector] Error attaching listener:', e);
             }
         });
     }
