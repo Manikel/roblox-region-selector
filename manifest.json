@@ -46,7 +46,7 @@
   },
   
   "web_accessible_resources": [{
-    "resources": ["injector.js", "globe-renderer.js", "three.min.js", "icons/icon16.png", "icons/icon48.png", "icons/icon128.png", "icons/world-map.png"],
+    "resources": ["injector.js", "globe-renderer.js", "three.min.js", "icons/icon16.png", "icons/icon48.png", "icons/icon128.png", "icons/world-map.png", "icons/earth_atmos_2048.jpg"],
     "matches": ["*://*.roblox.com/*"]
   }]
 }

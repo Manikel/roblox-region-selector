@@ -11,8 +11,7 @@
   let isRotating = false;
   let lastMouseX = 0;
   let rotationVelocity = 0;
-
-  const WORLD_MAP_URL = 'https://raw.githubusercontent.com/mrdoob/three.js/dev/examples/textures/planets/earth_atmos_2048.jpg';
+  let earthTextureUrl = null; // Will be provided by content script
 
   // Region coordinates (lat, lon) - must match content.js
   const REGION_COORDS = {
@@ -128,7 +127,7 @@
     const textureLoader = new THREE.TextureLoader();
 
     textureLoader.load(
-      WORLD_MAP_URL,
+      earthTextureUrl,
       (texture) => {
         const material = new THREE.MeshPhongMaterial({
           map: texture,
@@ -321,6 +320,7 @@
 
     if (data.type === 'INIT_GLOBE') {
       console.log('[RRS Globe] Initializing globe...');
+      earthTextureUrl = data.earthTextureUrl; // Set the texture URL from content script
       loadThreeJs()
         .then(() => initGlobe())
         .catch(error => {
