@@ -30,10 +30,8 @@
     'sydney': { lat: -33.8688, lon: 151.2093, name: 'Sydney', country: 'Australia', flag: '🇦🇺' }
   };
 
-  // World map texture will be loaded here
-  // For now, we'll use a simple grid pattern
-  // User can add a world map image to the icons folder and we'll load it
-  const WORLD_MAP_TEXTURE = null; // Will be set if user provides world-map.png in icons folder
+  // World map texture URL
+  const WORLD_MAP_URL = chrome.runtime.getURL('icons/world-map.png');
 
   // Inject button next to Roblox play button
   function injectRegionButton() {
@@ -528,19 +526,66 @@
     function render() {
       let svg = `<svg id="rrs-globe-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
 
-      // Draw globe background with gradient
+      // Define patterns and gradients
       svg += `
         <defs>
           <radialGradient id="globeGradient" cx="50%" cy="50%" r="50%">
             <stop offset="0%" style="stop-color:rgba(30, 40, 60, 0.95);stop-opacity:1" />
             <stop offset="100%" style="stop-color:rgba(15, 20, 30, 0.95);stop-opacity:1" />
           </radialGradient>
+          <clipPath id="globeClip">
+            <circle cx="${centerX}" cy="${centerY}" r="${radius}" />
+          </clipPath>
         </defs>
       `;
+
+      // Draw globe background
       svg += `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="url(#globeGradient)" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2"/>`;
 
-      // TODO: Add world map texture here when user provides it
-      // For now, we'll draw a enhanced grid to show the globe structure better
+      // Draw world map texture using grid-based approach for 3D projection
+      const gridSize = 20; // Reduced from 30 for better performance
+      for (let latIdx = 0; latIdx < gridSize; latIdx++) {
+        for (let lonIdx = 0; lonIdx < gridSize * 2; lonIdx++) {
+          const lat = 90 - (latIdx / gridSize) * 180;
+          const lon = -180 + (lonIdx / (gridSize * 2)) * 360;
+          const nextLat = 90 - ((latIdx + 1) / gridSize) * 180;
+          const nextLon = -180 + ((lonIdx + 1) / (gridSize * 2)) * 360;
+
+          const p1 = projectPoint(lat, lon);
+          const p2 = projectPoint(lat, nextLon);
+          const p3 = projectPoint(nextLat, nextLon);
+          const p4 = projectPoint(nextLat, lon);
+
+          if (p1.visible && p2.visible && p3.visible && p4.visible) {
+            // Calculate texture coordinates (0-1 range for equirectangular projection)
+            const u1 = (lon + 180) / 360;
+            const v1 = (90 - lat) / 180;
+            const u2 = (nextLon + 180) / 360;
+            const v2 = (90 - nextLat) / 180;
+
+            // Calculate the size of this quad in pixels
+            const quadWidth = Math.max(Math.abs(p2.x - p1.x), Math.abs(p3.x - p4.x));
+            const quadHeight = Math.max(Math.abs(p4.y - p1.y), Math.abs(p3.y - p2.y));
+
+            // Create a pattern for this cell that shows the correct portion of the world map
+            const patternId = `worldMapCell-${latIdx}-${lonIdx}`;
+            svg += `
+              <defs>
+                <pattern id="${patternId}" patternUnits="objectBoundingBox" width="1" height="1">
+                  <image href="${WORLD_MAP_URL}"
+                         x="${-u1}" y="${-v1}"
+                         width="1" height="${1 / ((v2 - v1) || 0.01)}"
+                         preserveAspectRatio="none"
+                         transform="scale(${1 / ((u2 - u1) || 0.01)}, 1)" />
+                </pattern>
+              </defs>
+              <path d="M${p1.x},${p1.y} L${p2.x},${p2.y} L${p3.x},${p3.y} L${p4.x},${p4.y} Z"
+                    fill="url(#${patternId})"
+                    opacity="0.7" />
+            `;
+          }
+        }
+      }
 
       // Draw latitude lines
       for (let lat = -60; lat <= 60; lat += 30) {
