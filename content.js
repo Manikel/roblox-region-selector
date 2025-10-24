@@ -7,6 +7,7 @@
   let currentPlaceId = null;
   let allServers = [];
   let regionServerCounts = {};
+  let currentSelectedRegion = null;
 
   // Region coordinates on globe (latitude, longitude)
   const REGION_COORDS = {
@@ -29,21 +30,10 @@
     'sydney': { lat: -33.8688, lon: 151.2093, name: 'Sydney', country: 'Australia', flag: '🇦🇺' }
   };
 
-  // Simplified continent outlines (major landmasses)
-  const CONTINENTS = [
-    // North America
-    [[49, -125], [50, -100], [48, -90], [45, -75], [40, -74], [35, -80], [30, -95], [25, -100], [20, -105], [30, -115], [35, -120], [40, -125], [49, -125]],
-    // South America
-    [[10, -80], [5, -75], [-5, -75], [-20, -70], [-35, -70], [-45, -70], [-55, -68], [-50, -75], [-30, -80], [-10, -82], [0, -78], [10, -80]],
-    // Europe
-    [[70, -10], [70, 30], [60, 40], [50, 50], [40, 40], [35, 10], [40, -10], [45, -10], [50, 0], [60, -5], [70, -10]],
-    // Africa
-    [[35, 10], [30, 30], [20, 40], [10, 45], [-10, 40], [-30, 30], [-35, 20], [-25, 15], [-10, 10], [0, 10], [10, 0], [20, 0], [35, 10]],
-    // Asia
-    [[70, 40], [70, 100], [70, 140], [60, 150], [50, 140], [40, 130], [30, 120], [20, 110], [10, 100], [0, 100], [10, 80], [20, 70], [30, 60], [40, 50], [50, 50], [60, 40], [70, 40]],
-    // Australia
-    [[-10, 110], [-15, 130], [-25, 140], [-35, 150], [-40, 145], [-35, 135], [-30, 125], [-20, 115], [-10, 110]]
-  ];
+  // World map texture will be loaded here
+  // For now, we'll use a simple grid pattern
+  // User can add a world map image to the icons folder and we'll load it
+  const WORLD_MAP_TEXTURE = null; // Will be set if user provides world-map.png in icons folder
 
   // Inject button next to Roblox play button
   function injectRegionButton() {
@@ -529,7 +519,7 @@
       return {
         x: centerX + x * scale,
         y: centerY + yRotated * scale,
-        visible: zRotated > -radius * 0.3,
+        visible: zRotated < radius * 0.3, // Fixed: changed from > to < to show front side
         scale: scale,
         z: zRotated
       };
@@ -538,29 +528,19 @@
     function render() {
       let svg = `<svg id="rrs-globe-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
 
-      // Draw globe background
-      svg += `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="rgba(20, 25, 35, 0.9)" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2"/>`;
+      // Draw globe background with gradient
+      svg += `
+        <defs>
+          <radialGradient id="globeGradient" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" style="stop-color:rgba(30, 40, 60, 0.95);stop-opacity:1" />
+            <stop offset="100%" style="stop-color:rgba(15, 20, 30, 0.95);stop-opacity:1" />
+          </radialGradient>
+        </defs>
+      `;
+      svg += `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="url(#globeGradient)" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2"/>`;
 
-      // Draw continents
-      CONTINENTS.forEach(continent => {
-        let pathData = '';
-        let allVisible = true;
-        const points = [];
-
-        continent.forEach(([lat, lon]) => {
-          const point = projectPoint(lat, lon);
-          points.push(point);
-          if (!point.visible) allVisible = false;
-        });
-
-        if (allVisible) {
-          points.forEach((point, i) => {
-            pathData += (i === 0 ? 'M' : 'L') + `${point.x},${point.y} `;
-          });
-          pathData += 'Z';
-          svg += `<path d="${pathData}" fill="rgba(100, 120, 140, 0.3)" stroke="rgba(150, 170, 190, 0.4)" stroke-width="1"/>`;
-        }
-      });
+      // TODO: Add world map texture here when user provides it
+      // For now, we'll draw a enhanced grid to show the globe structure better
 
       // Draw latitude lines
       for (let lat = -60; lat <= 60; lat += 30) {
@@ -686,15 +666,33 @@
   }
 
   // Show server list for selected region
-  function showServerList(regionCode) {
+  async function showServerList(regionCode) {
+    // If clicking the same region, do nothing
+    if (currentSelectedRegion === regionCode) {
+      return;
+    }
+
+    const serverList = document.getElementById('rrs-server-list');
+    const globeContainer = document.getElementById('rrs-globe-container');
+
+    // If there's already a region selected, animate out first
+    if (currentSelectedRegion !== null) {
+      // Slide out and fade out current server list
+      serverList.classList.remove('visible');
+      globeContainer.classList.remove('shifted');
+
+      // Wait for animation to complete
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
+
+    // Update current selection
+    currentSelectedRegion = regionCode;
+
     const regionData = REGION_COORDS[regionCode];
     const regionServers = allServers.filter(s => s.region === regionCode);
 
     // Sort by player count (high to low)
     regionServers.sort((a, b) => b.playing - a.playing);
-
-    // Shift globe left
-    document.getElementById('rrs-globe-container').classList.add('shifted');
 
     // Build server list HTML
     const locationName = regionData.state
@@ -719,16 +717,17 @@
       `;
     });
 
-    const serverList = document.getElementById('rrs-server-list');
-    serverList.innerHTML = html;
+    const serverListElem = document.getElementById('rrs-server-list');
+    serverListElem.innerHTML = html;
 
-    // Show server list with animation
+    // Shift globe left and show server list with animation
     setTimeout(() => {
-      serverList.classList.add('visible');
+      globeContainer.classList.add('shifted');
+      serverListElem.classList.add('visible');
     }, 100);
 
     // Add join button handlers
-    serverList.querySelectorAll('.rrs-join-btn').forEach(btn => {
+    serverListElem.querySelectorAll('.rrs-join-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         const serverId = btn.getAttribute('data-server-id');
