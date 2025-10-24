@@ -452,7 +452,12 @@
     });
 
     // Render globe immediately (with all gray dots) and store reference
-    globeRendererInstance = renderGlobe();
+    renderGlobe().then(instance => {
+      globeRendererInstance = instance;
+      console.log('[RRS] Globe rendered successfully');
+    }).catch(error => {
+      console.error('[RRS] Failed to render globe:', error);
+    });
 
     // Start scanning servers in real-time
     scanServersForRegionsRealtime();
@@ -531,7 +536,9 @@
 
     // Hide loading, show globe
     document.getElementById('rrs-loading').style.display = 'none';
-    renderGlobe();
+    renderGlobe().catch(error => {
+      console.error('[RRS] Failed to render globe:', error);
+    });
   }
 
   // Global reference to globe renderer for real-time updates

@@ -3,7 +3,14 @@
 
 class Globe3D {
   constructor(containerId, options = {}) {
+    console.log('[Globe3D] Initializing with container:', containerId);
     this.container = document.getElementById(containerId);
+
+    if (!this.container) {
+      console.error('[Globe3D] Container not found:', containerId);
+      throw new Error(`Container ${containerId} not found`);
+    }
+
     this.width = options.width || 600;
     this.height = options.height || 600;
     this.radius = options.radius || 250;
@@ -68,14 +75,19 @@ class Globe3D {
   }
 
   loadTexture(url) {
+    console.log('[Globe3D] Loading texture from:', url);
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
+        console.log('[Globe3D] Texture loaded successfully');
         this.texture = img;
         resolve();
       };
-      img.onerror = reject;
+      img.onerror = (err) => {
+        console.error('[Globe3D] Failed to load texture:', err);
+        reject(err);
+      };
       img.src = url;
     });
   }
@@ -351,6 +363,7 @@ class Globe3D {
   }
 
   start() {
+    console.log('[Globe3D] Starting globe rendering');
     this.render();
   }
 
