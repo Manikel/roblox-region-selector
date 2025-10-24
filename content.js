@@ -481,7 +481,10 @@
     renderGlobe();
   }
 
-  // Render 3D-style globe with regions
+
+  //
+
+ Render 3D globe with Canvas and proper texture mapping
   function renderGlobe() {
     const globe = document.getElementById('rrs-globe');
     const size = 600;
@@ -495,153 +498,157 @@
     let lastMouseX = 0;
     let lastMouseY = 0;
 
-    function projectPoint(lat, lon) {
-      // Convert to radians
-      const phi = (90 - lat) * (Math.PI / 180);
-      const theta = (lon + rotationX) * (Math.PI / 180);
+    // Create canvas for globe rendering
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.cursor = 'grab';
+    globe.innerHTML = '';
+    globe.appendChild(canvas);
 
-      // 3D coordinates
-      const x = radius * Math.sin(phi) * Math.cos(theta);
-      const y = radius * Math.cos(phi);
-      const z = radius * Math.sin(phi) * Math.sin(theta);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
-      // Apply vertical rotation
-      const rotY = rotationY * (Math.PI / 180);
-      const yRotated = y * Math.cos(rotY) - z * Math.sin(rotY);
-      const zRotated = y * Math.sin(rotY) + z * Math.cos(rotY);
+    // Load world map texture
+    const mapImage = new Image();
+    mapImage.crossOrigin = 'anonymous';
+    mapImage.src = WORLD_MAP_URL;
 
-      // Perspective projection
-      const perspective = 600;
-      const scale = perspective / (perspective + zRotated);
-
-      return {
-        x: centerX + x * scale,
-        y: centerY + yRotated * scale,
-        visible: zRotated < radius * 0.3, // Fixed: changed from > to < to show front side
-        scale: scale,
-        z: zRotated
-      };
-    }
+    mapImage.onload = function() {
+      render();
+    };
 
     function render() {
-      let svg = `<svg id="rrs-globe-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
+      // Clear canvas
+      ctx.clearRect(0, 0, size, size);
 
-      // Define patterns and gradients
-      svg += `
-        <defs>
-          <radialGradient id="globeGradient" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" style="stop-color:rgba(30, 40, 60, 0.95);stop-opacity:1" />
-            <stop offset="100%" style="stop-color:rgba(15, 20, 30, 0.95);stop-opacity:1" />
-          </radialGradient>
-          <clipPath id="globeClip">
-            <circle cx="${centerX}" cy="${centerY}" r="${radius}" />
-          </clipPath>
-        </defs>
-      `;
+      // Draw background gradient
+      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+      gradient.addColorStop(0, 'rgba(30, 40, 60, 0.95)');
+      gradient.addColorStop(1, 'rgba(15, 20, 30, 0.95)');
 
-      // Draw globe background
-      svg += `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="url(#globeGradient)" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2"/>`;
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
 
-      // Draw world map texture using grid-based approach for 3D projection
-      const gridSize = 25; // Grid resolution for texture mapping
-      const mapWidth = 2048; // Assumed texture width
-      const mapHeight = 1024; // Assumed texture height
+      // Draw textured globe using pixel-by-pixel mapping
+      if (mapImage.complete && mapImage.width > 0) {
+        // Create temporary canvas to read texture pixels
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = mapImage.width;
+        tempCanvas.height = mapImage.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(mapImage, 0, 0);
+        const mapData = tempCtx.getImageData(0, 0, mapImage.width, mapImage.height).data;
 
-      for (let latIdx = 0; latIdx < gridSize; latIdx++) {
-        for (let lonIdx = 0; lonIdx < gridSize * 2; lonIdx++) {
-          const lat = 90 - (latIdx / gridSize) * 180;
-          const lon = -180 + (lonIdx / (gridSize * 2)) * 360;
-          const nextLat = 90 - ((latIdx + 1) / gridSize) * 180;
-          const nextLon = -180 + ((lonIdx + 1) / (gridSize * 2)) * 360;
+        const imageData = ctx.getImageData(0, 0, size, size);
+        const data = imageData.data;
 
-          const p1 = projectPoint(lat, lon);
-          const p2 = projectPoint(lat, nextLon);
-          const p3 = projectPoint(nextLat, nextLon);
-          const p4 = projectPoint(nextLat, lon);
+        const rotXRad = rotationX * Math.PI / 180;
+        const rotYRad = rotationY * Math.PI / 180;
 
-          if (p1.visible && p2.visible && p3.visible && p4.visible) {
-            // Calculate texture coordinates (0-1 range for equirectangular projection)
-            const u1 = (lon + 180) / 360;
-            const v1 = (90 - lat) / 180;
-            const u2 = (nextLon + 180) / 360;
-            const v2 = (90 - nextLat) / 180;
+        // For each pixel in output
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const dx = x - centerX;
+            const dy = y - centerY;
+            const distSq = dx * dx + dy * dy;
 
-            // Calculate the actual pixel coordinates in the source texture
-            const srcX = u1 * mapWidth;
-            const srcY = v1 * mapHeight;
-            const srcWidth = (u2 - u1) * mapWidth;
-            const srcHeight = (v2 - v1) * mapHeight;
+            // Check if pixel is within sphere
+            if (distSq <= radius * radius) {
+              // Calculate 3D point on sphere surface (z points towards viewer)
+              const dz = Math.sqrt(radius * radius - distSq);
 
-            // Calculate destination quad bounds
-            const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
-            const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
-            const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
-            const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
-            const destWidth = maxX - minX;
-            const destHeight = maxY - minY;
+              // Apply horizontal rotation (around Y axis)
+              const x3d = dx * Math.cos(rotXRad) + dz * Math.sin(rotXRad);
+              const z3d = -dx * Math.sin(rotXRad) + dz * Math.cos(rotXRad);
 
-            // Create a unique clip path for this quad
-            const clipId = `clip-${latIdx}-${lonIdx}`;
-            svg += `
-              <defs>
-                <clipPath id="${clipId}">
-                  <path d="M${p1.x},${p1.y} L${p2.x},${p2.y} L${p3.x},${p3.y} L${p4.x},${p4.y} Z" />
-                </clipPath>
-              </defs>
-            `;
+              // Apply vertical rotation (around X axis)
+              const y3d = dy * Math.cos(rotYRad) + z3d * Math.sin(rotYRad);
+              const z3d_final = -dy * Math.sin(rotYRad) + z3d * Math.cos(rotYRad);
 
-            // Draw the image slice for this quad
-            // Position the full map, then clip to show only this portion
-            const scaleX = destWidth / srcWidth;
-            const scaleY = destHeight / srcHeight;
-            const translateX = minX - (srcX * scaleX);
-            const translateY = minY - (srcY * scaleY);
+              // Only draw if facing towards viewer
+              if (z3d_final > 0) {
+                // Convert to spherical coordinates (lat/lon)
+                const lat = Math.asin(Math.max(-1, Math.min(1, y3d / radius)));
+                const lon = Math.atan2(x3d, z3d_final);
 
-            svg += `
-              <image
-                href="${WORLD_MAP_URL}"
-                x="0" y="0"
-                width="${mapWidth}" height="${mapHeight}"
-                transform="translate(${translateX}, ${translateY}) scale(${scaleX}, ${scaleY})"
-                clip-path="url(#${clipId})"
-                opacity="0.7"
-                preserveAspectRatio="none" />
-            `;
+                // Convert to UV coordinates (0-1 range for equirectangular)
+                const u = (lon / Math.PI + 1) * 0.5;
+                const v = 0.5 - (lat / Math.PI);
+
+                // Sample texture
+                const tx = Math.floor(u * (mapImage.width - 1));
+                const ty = Math.floor(v * (mapImage.height - 1));
+                const mapIdx = (ty * mapImage.width + tx) * 4;
+
+                // Write pixel with reduced opacity for texture
+                const idx = (y * size + x) * 4;
+                const alpha = mapData[mapIdx + 3] * 0.7;
+                data[idx] = mapData[mapIdx];
+                data[idx + 1] = mapData[mapIdx + 1];
+                data[idx + 2] = mapData[mapIdx + 2];
+                data[idx + 3] = Math.floor(alpha);
+              }
+            }
           }
         }
+
+        ctx.putImageData(imageData, 0, 0);
       }
+
+      // Draw grid lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.lineWidth = 1;
 
       // Draw latitude lines
       for (let lat = -60; lat <= 60; lat += 30) {
-        let pathData = '';
+        ctx.beginPath();
+        let firstPoint = true;
         for (let lon = -180; lon <= 180; lon += 5) {
-          const point = projectPoint(lat, lon);
+          const point = projectPointToScreen(lat, lon);
           if (point.visible) {
-            pathData += (pathData ? 'L' : 'M') + `${point.x},${point.y} `;
+            if (firstPoint) {
+              ctx.moveTo(point.x, point.y);
+              firstPoint = false;
+            } else {
+              ctx.lineTo(point.x, point.y);
+            }
           }
         }
-        if (pathData) {
-          svg += `<path d="${pathData}" stroke="rgba(255, 255, 255, 0.08)" fill="none" stroke-width="1"/>`;
-        }
+        ctx.stroke();
       }
 
       // Draw longitude lines
       for (let lon = -180; lon < 180; lon += 30) {
-        let pathData = '';
+        ctx.beginPath();
+        let firstPoint = true;
         for (let lat = -90; lat <= 90; lat += 5) {
-          const point = projectPoint(lat, lon);
+          const point = projectPointToScreen(lat, lon);
           if (point.visible) {
-            pathData += (pathData ? 'L' : 'M') + `${point.x},${point.y} `;
+            if (firstPoint) {
+              ctx.moveTo(point.x, point.y);
+              firstPoint = false;
+            } else {
+              ctx.lineTo(point.x, point.y);
+            }
           }
         }
-        if (pathData) {
-          svg += `<path d="${pathData}" stroke="rgba(255, 255, 255, 0.08)" fill="none" stroke-width="1"/>`;
-        }
+        ctx.stroke();
       }
 
-      // Draw region dots (sorted by z-depth for proper layering)
+      // Draw outline
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Draw region dots
       const regions = Object.entries(REGION_COORDS).map(([code, data]) => {
-        const point = projectPoint(data.lat, data.lon);
+        const point = projectPointToScreen(data.lat, data.lon);
         const serverCount = regionServerCounts[code] || 0;
         const isActive = serverCount > 0;
 
@@ -653,66 +660,62 @@
           isActive
         };
       }).filter(r => r.point.visible)
-        .sort((a, b) => a.point.z - b.point.z); // Back to front
+        .sort((a, b) => a.point.z - b.point.z);
 
       regions.forEach(region => {
         const dotSize = 8 * region.point.scale;
-        svg += `<circle
-          class="rrs-region-dot ${region.isActive ? 'active' : 'inactive'}"
-          cx="${region.point.x}"
-          cy="${region.point.y}"
-          r="${dotSize}"
-          data-region="${region.code}"
-          data-count="${region.serverCount}"
-        />`;
+        ctx.fillStyle = region.isActive ? '#4181FA' : '#666';
+
+        if (region.isActive) {
+          ctx.shadowColor = 'rgba(65, 129, 250, 0.8)';
+          ctx.shadowBlur = 8;
+        }
+
+        ctx.beginPath();
+        ctx.arc(region.point.x, region.point.y, dotSize, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
       });
 
-      svg += '</svg>';
-      globe.innerHTML = svg;
-
-      // Add event listeners to dots
-      document.querySelectorAll('.rrs-region-dot').forEach(dot => {
-        const regionCode = dot.getAttribute('data-region');
-        const count = parseInt(dot.getAttribute('data-count'));
-
-        dot.addEventListener('mouseenter', (e) => {
-          const regionData = REGION_COORDS[regionCode];
-          const tooltip = document.getElementById('rrs-tooltip');
-          tooltip.textContent = `${regionData.name}: ${count} server${count !== 1 ? 's' : ''}`;
-          tooltip.style.left = e.pageX + 10 + 'px';
-          tooltip.style.top = e.pageY + 10 + 'px';
-          tooltip.classList.add('visible');
-        });
-
-        dot.addEventListener('mousemove', (e) => {
-          const tooltip = document.getElementById('rrs-tooltip');
-          tooltip.style.left = e.pageX + 10 + 'px';
-          tooltip.style.top = e.pageY + 10 + 'px';
-        });
-
-        dot.addEventListener('mouseleave', () => {
-          const tooltip = document.getElementById('rrs-tooltip');
-          tooltip.classList.remove('visible');
-        });
-
-        dot.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (count > 0) {
-            showServerList(regionCode);
-          }
-        });
-      });
+      // Store region positions for click detection
+      canvas.regionPositions = regions;
     }
 
-    // Mouse drag to rotate
-    globe.addEventListener('mousedown', (e) => {
+    function projectPointToScreen(lat, lon) {
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lon + rotationX) * (Math.PI / 180);
+
+      const x = radius * Math.sin(phi) * Math.cos(theta);
+      const y = radius * Math.cos(phi);
+      const z = radius * Math.sin(phi) * Math.sin(theta);
+
+      const rotY = rotationY * (Math.PI / 180);
+      const yRotated = y * Math.cos(rotY) - z * Math.sin(rotY);
+      const zRotated = y * Math.sin(rotY) + z * Math.cos(rotY);
+
+      const perspective = 600;
+      const scale = perspective / (perspective + zRotated);
+
+      return {
+        x: centerX + x * scale,
+        y: centerY + yRotated * scale,
+        visible: zRotated < radius * 0.3,
+        scale: scale,
+        z: zRotated
+      };
+    }
+
+    // Mouse events for dragging
+    canvas.addEventListener('mousedown', (e) => {
       isDragging = true;
       lastMouseX = e.clientX;
       lastMouseY = e.clientY;
+      canvas.style.cursor = 'grabbing';
       e.preventDefault();
     });
 
-    document.addEventListener('mousemove', (e) => {
+    canvas.addEventListener('mousemove', (e) => {
       if (isDragging) {
         const deltaX = e.clientX - lastMouseX;
         const deltaY = e.clientY - lastMouseY;
@@ -724,17 +727,78 @@
         lastMouseY = e.clientY;
 
         render();
+      } else {
+        // Check hover on dots
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        if (canvas.regionPositions) {
+          const tooltip = document.getElementById('rrs-tooltip');
+          let hovering = false;
+
+          for (const region of canvas.regionPositions) {
+            const dist = Math.sqrt(
+              Math.pow(mouseX - region.point.x, 2) +
+              Math.pow(mouseY - region.point.y, 2)
+            );
+            const dotSize = 8 * region.point.scale;
+
+            if (dist <= dotSize) {
+              tooltip.textContent = `${region.data.name}: ${region.serverCount} server${region.serverCount !== 1 ? 's' : ''}`;
+              tooltip.style.left = e.pageX + 10 + 'px';
+              tooltip.style.top = e.pageY + 10 + 'px';
+              tooltip.classList.add('visible');
+              canvas.style.cursor = 'pointer';
+              hovering = true;
+              break;
+            }
+          }
+
+          if (!hovering) {
+            tooltip.classList.remove('visible');
+            canvas.style.cursor = 'grab';
+          }
+        }
       }
     });
 
-    document.addEventListener('mouseup', () => {
+    canvas.addEventListener('mouseup', () => {
       isDragging = false;
+      canvas.style.cursor = 'grab';
     });
 
-    render();
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+      canvas.style.cursor = 'grab';
+      const tooltip = document.getElementById('rrs-tooltip');
+      tooltip.classList.remove('visible');
+    });
+
+    canvas.addEventListener('click', (e) => {
+      if (!isDragging) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        if (canvas.regionPositions) {
+          for (const region of canvas.regionPositions) {
+            const dist = Math.sqrt(
+              Math.pow(mouseX - region.point.x, 2) +
+              Math.pow(mouseY - region.point.y, 2)
+            );
+            const dotSize = 8 * region.point.scale;
+
+            if (dist <= dotSize && region.serverCount > 0) {
+              showServerList(region.code);
+              break;
+            }
+          }
+        }
+      }
+    });
   }
 
-  // Show server list for selected region
   async function showServerList(regionCode) {
     // If clicking the same region, do nothing
     if (currentSelectedRegion === regionCode) {
