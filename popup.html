@@ -8,317 +8,189 @@
       margin: 0;
       padding: 0;
     }
-    
+
     body {
-      width: 320px;
+      width: 350px;
+      min-height: 400px;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #1a1a1a;
+      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
       color: #e0e0e0;
-      overflow: hidden;
-    }
-    
-    .header {
-      background: #2d2d2d;
-      padding: 16px;
-      border-bottom: 1px solid #3a3a3a;
-      position: relative;
-    }
-    
-    .header-logo {
-      position: absolute;
-      top: 16px;
-      right: 16px;
-      width: 40px;
-      height: 40px;
-      object-fit: contain;
-    }
-    
-    h1 {
-      font-size: 16px;
-      font-weight: 600;
-      color: #ffffff;
-      margin-bottom: 4px;
-      padding-right: 50px;
-    }
-    
-    .subtitle {
-      font-size: 12px;
-      color: #a0a0a0;
-      font-weight: 400;
-    }
-    
-    .content {
-      padding: 16px;
-    }
-    
-    .form-group {
-      margin-bottom: 16px;
-    }
-    
-    label {
-      display: block;
-      margin-bottom: 6px;
-      font-size: 13px;
-      font-weight: 500;
-      color: #b0b0b0;
-    }
-    
-    /* Custom Select Styles */
-    .custom-select {
-      position: relative;
-      width: 100%;
-    }
-    
-    .select-selected {
-      background: #2d2d2d;
-      border: 1px solid #404040;
-      border-radius: 6px;
-      padding: 10px 30px 10px 12px;
-      color: #e0e0e0;
-      font-size: 13px;
-      cursor: pointer;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
-      text-align: center;
-      position: relative;
-      user-select: none;
-    }
-    
-    .select-selected:after {
-      content: "";
-      position: absolute;
-      top: 50%;
-      right: 12px;
-      transform: translateY(-50%);
-      width: 0;
-      height: 0;
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-top: 5px solid #e0e0e0;
-    }
-    
-    .select-selected.select-arrow-active:after {
-      border-top: none;
-      border-bottom: 5px solid #e0e0e0;
-    }
-    
-    .select-selected:hover:not(.select-disabled) {
-      border-color: #505050;
-    }
-    
-    .select-selected.select-disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    
-    .select-selected.select-disabled:after {
-      opacity: 0.5;
-    }
-    
-    .select-items {
-      position: absolute;
-      background: #2d2d2d;
-      border: 1px solid #404040;
-      border-radius: 6px;
-      top: 100%;
-      left: 0;
-      right: 0;
-      z-index: 99;
-      max-height: 250px;
-      overflow-y: auto;
-      margin-top: 4px;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-    }
-    
-    .select-hide {
-      display: none;
-    }
-    
-    .select-items div {
-      padding: 10px 12px;
-      cursor: pointer;
-      font-size: 13px;
-      transition: background-color 0.2s ease;
       display: flex;
-      justify-content: space-between;
+      flex-direction: column;
       align-items: center;
-    }
-    
-    .select-items div:hover {
-      background: #383838;
-    }
-    
-    .select-items div.same-as-selected {
-      background: #383838;
-    }
-    
-    .option-city {
-      color: #e0e0e0;
-      flex: 1;
-    }
-    
-    .option-ping {
-      font-weight: 500;
-      margin-left: 12px;
-      white-space: nowrap;
-    }
-    
-    .option-ping.ping-low {
-      color: #90ee90;
-    }
-    
-    .option-ping.ping-medium {
-      color: #ffcc90;
-    }
-    
-    .option-ping.ping-high {
-      color: #ff9090;
-    }
-    
-    .optgroup-label {
-      padding: 8px 12px 4px 12px;
-      font-size: 11px;
-      font-weight: 600;
-      color: #888;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      cursor: default !important;
-      background: #252525 !important;
-    }
-    
-    .optgroup-label:hover {
-      background: #252525 !important;
-    }
-    
-    /* Scrollbar styles */
-    .select-items::-webkit-scrollbar {
-      width: 8px;
-    }
-    
-    .select-items::-webkit-scrollbar-track {
-      background: #1a1a1a;
-      border-radius: 4px;
-    }
-    
-    .select-items::-webkit-scrollbar-thumb {
-      background: #404040;
-      border-radius: 4px;
-    }
-    
-    .select-items::-webkit-scrollbar-thumb:hover {
-      background: #505050;
-    }
-    
-    .ping-measuring {
-      font-size: 11px;
-      color: #888;
-      margin-top: 4px;
-    }
-    
-    .status {
-      background: #2a2a2a;
-      border: 1px solid #404040;
-      border-radius: 6px;
-      padding: 10px 12px;
-      font-size: 12px;
-      color: #b0b0b0;
-      margin-bottom: 16px;
+      justify-content: center;
+      padding: 40px 30px;
       text-align: center;
     }
-    
-    .status.active {
-      background: #1a3d1a;
-      border-color: #2d5a2d;
-      color: #90ee90;
+
+    .logo-container {
+      margin-bottom: 30px;
+      animation: fadeIn 0.6s ease;
     }
-    
-    .status.warning {
-      background: #3d2a1a;
-      border-color: #5a3d2d;
-      color: #ffcc90;
+
+    .logo {
+      width: 100px;
+      height: 100px;
+      object-fit: contain;
+      filter: drop-shadow(0 4px 12px rgba(0, 176, 111, 0.3));
     }
-    
-    .buttons {
-      display: flex;
-      gap: 8px;
-    }
-    
-    button {
-      flex: 1;
-      padding: 10px 16px;
-      border: 1px solid #404040;
-      border-radius: 6px;
-      background: #2d2d2d;
-      color: #e0e0e0;
-      cursor: pointer;
-      font-size: 12px;
-      font-weight: 500;
-      transition: all 0.2s ease;
-      outline: none;
-    }
-    
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    
-    button:hover:not(:disabled) {
-      background: #383838;
-      border-color: #505050;
-    }
-    
-    button:active:not(:disabled) {
-      transform: translateY(1px);
-    }
-    
-    button.primary {
-      background: #0078d4;
-      border-color: #106ebe;
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
       color: #ffffff;
+      margin-bottom: 10px;
+      animation: fadeIn 0.6s ease 0.2s backwards;
     }
-    
-    button.primary:hover:not(:disabled) {
-      background: #106ebe;
-      border-color: #005a9e;
+
+    .tagline {
+      font-size: 14px;
+      color: #00b06f;
+      font-weight: 600;
+      margin-bottom: 30px;
+      animation: fadeIn 0.6s ease 0.3s backwards;
     }
-    
-    button.primary:focus:not(:disabled) {
-      box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.3);
-    }
-    
+
     .divider {
+      width: 80%;
       height: 1px;
-      background: #3a3a3a;
-      margin: 16px 0;
+      background: linear-gradient(to right, transparent, #404040, transparent);
+      margin: 20px 0;
+      animation: fadeIn 0.6s ease 0.4s backwards;
+    }
+
+    .credits {
+      margin-top: 10px;
+      animation: fadeIn 0.6s ease 0.5s backwards;
+    }
+
+    .credits p {
+      font-size: 14px;
+      color: #b0b0b0;
+      line-height: 1.8;
+      margin-bottom: 8px;
+    }
+
+    .credits .highlight {
+      color: #00b06f;
+      font-weight: 600;
+    }
+
+    .love {
+      color: #ff6b6b;
+      display: inline-block;
+      animation: heartbeat 1.5s ease infinite;
+    }
+
+    .opensource-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(0, 176, 111, 0.1);
+      border: 1px solid rgba(0, 176, 111, 0.3);
+      border-radius: 20px;
+      padding: 8px 16px;
+      margin: 20px 0;
+      font-size: 13px;
+      color: #00b06f;
+      font-weight: 600;
+      animation: fadeIn 0.6s ease 0.6s backwards;
+    }
+
+    .links {
+      margin-top: 25px;
+      display: flex;
+      gap: 12px;
+      animation: fadeIn 0.6s ease 0.7s backwards;
+    }
+
+    .link-btn {
+      flex: 1;
+      padding: 10px 20px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: #e0e0e0;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .link-btn:hover {
+      background: rgba(0, 176, 111, 0.2);
+      border-color: #00b06f;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 176, 111, 0.2);
+    }
+
+    .version {
+      margin-top: 25px;
+      font-size: 11px;
+      color: #666;
+      animation: fadeIn 0.6s ease 0.8s backwards;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes heartbeat {
+      0%, 100% {
+        transform: scale(1);
+      }
+      10%, 30% {
+        transform: scale(1.2);
+      }
+      20%, 40% {
+        transform: scale(1);
+      }
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    <img src="icons/icon128.png" alt="RSP Logo" class="header-logo">
-    <h1>Roblox Region Selector</h1>
-    <p class="subtitle">Choose your preferred server region</p>
+  <div class="logo-container">
+    <img src="icons/icon128.png" alt="Roblox Region Selector" class="logo">
   </div>
-  
-  <div class="content">
-    <div class="form-group">
-      <label for="regionSelect">Server Region</label>
-      <div class="custom-select">
-        <div class="select-selected select-disabled" id="regionSelectDisplay">Auto (Default)</div>
-        <div class="select-items select-hide" id="regionSelectItems"></div>
-      </div>
-      <div class="ping-measuring" id="pingStatus"></div>
-    </div>
-    
-    <div class="status" id="status">
-      Checking for Roblox tab...
-    </div>
-    
-    <div class="buttons">
-      <button id="saveBtn" class="primary" disabled>Apply</button>
-      <button id="resetBtn" disabled>Reset</button>
-    </div>
+
+  <h1>Roblox Region Selector</h1>
+  <p class="tagline">Choose Your Server, Choose Your Experience</p>
+
+  <div class="divider"></div>
+
+  <div class="opensource-badge">
+    <span>🌍</span>
+    <span>Open Source Project</span>
   </div>
-  
+
+  <div class="credits">
+    <p>Made with <span class="love">♥</span> by</p>
+    <p class="highlight">Mani Kelidari (man32k)</p>
+    <p style="margin-top: 15px; font-size: 13px;">
+      Built to serve the Roblox community<br>
+      with better server accessibility
+    </p>
+  </div>
+
+  <div class="links">
+    <a href="https://github.com" class="link-btn" id="github-link" target="_blank">
+      GitHub
+    </a>
+    <a href="https://chrome.google.com/webstore" class="link-btn" id="rate-link" target="_blank">
+      Rate Us
+    </a>
+  </div>
+
+  <p class="version">Version 2.0.0</p>
+
   <script src="popup.js"></script>
 </body>
 </html>
