@@ -1,59 +1,1268 @@
-// content.js - Runs on Roblox game pages
-
+// content.js - Enhanced UI with in-page globe interface
 (function() {
   'use strict';
-  
+
   console.log('[Roblox Region Selector] Content script loaded');
 
-  let currentRegion = 'auto';
-  let isSearching = false;
+  let currentPlaceId = null;
+  let allServers = [];
+  let regionServerCounts = {};
+  let currentSelectedRegion = null;
 
-  // Load region preference from storage on startup
-  function loadRegionPreference() {
-    chrome.storage.local.get(['preferredRegion'], function(result) {
-      currentRegion = result.preferredRegion || 'auto';
-      console.log('[Roblox Region Selector] Loaded region preference:', currentRegion);
-      
-      // Notify page context about the preference
-      window.postMessage({
-        type: 'UPDATE_REGION_PREFERENCE',
-        region: currentRegion
-      }, window.location.origin);
+  // Region coordinates on globe (latitude, longitude)
+  const REGION_COORDS = {
+    'seattle': { lat: 47.6062, lon: -122.3321, name: 'Seattle', state: 'WA', country: 'US', flag: '🇺🇸' },
+    'losangeles': { lat: 34.0522, lon: -118.2437, name: 'Los Angeles', state: 'CA', country: 'US', flag: '🇺🇸' },
+    'dallas': { lat: 32.7767, lon: -96.7970, name: 'Dallas', state: 'TX', country: 'US', flag: '🇺🇸' },
+    'chicago': { lat: 41.8781, lon: -87.6298, name: 'Chicago', state: 'IL', country: 'US', flag: '🇺🇸' },
+    'atlanta': { lat: 33.7490, lon: -84.3880, name: 'Atlanta', state: 'GA', country: 'US', flag: '🇺🇸' },
+    'miami': { lat: 25.7617, lon: -80.1918, name: 'Miami', state: 'FL', country: 'US', flag: '🇺🇸' },
+    'ashburn': { lat: 39.0438, lon: -77.4874, name: 'Ashburn', state: 'VA', country: 'US', flag: '🇺🇸' },
+    'newyork': { lat: 40.7128, lon: -74.0060, name: 'New York City', state: 'NY', country: 'US', flag: '🇺🇸' },
+    'london': { lat: 51.5074, lon: -0.1278, name: 'London', country: 'UK', flag: '🇬🇧' },
+    'amsterdam': { lat: 52.3676, lon: 4.9041, name: 'Amsterdam', country: 'Netherlands', flag: '🇳🇱' },
+    'paris': { lat: 48.8566, lon: 2.3522, name: 'Paris', country: 'France', flag: '🇫🇷' },
+    'frankfurt': { lat: 50.1109, lon: 8.6821, name: 'Frankfurt', country: 'Germany', flag: '🇩🇪' },
+    'warsaw': { lat: 52.2297, lon: 21.0122, name: 'Warsaw', country: 'Poland', flag: '🇵🇱' },
+    'mumbai': { lat: 19.0760, lon: 72.8777, name: 'Mumbai', country: 'India', flag: '🇮🇳' },
+    'tokyo': { lat: 35.6762, lon: 139.6503, name: 'Tokyo', country: 'Japan', flag: '🇯🇵' },
+    'singapore': { lat: 1.3521, lon: 103.8198, name: 'Singapore', country: 'Singapore', flag: '🇸🇬' },
+    'sydney': { lat: -33.8688, lon: 151.2093, name: 'Sydney', country: 'Australia', flag: '🇦🇺' }
+  };
+
+  // World map texture URL
+  const WORLD_MAP_URL = chrome.runtime.getURL('icons/world-map.png');
+
+  // Inject button next to Roblox play button
+  function injectRegionButton() {
+    console.log('[RRS] Attempting to inject button...');
+
+    const playButtonSelectors = [
+      'button[data-testid="play-button"]',
+      '#game-details-play-button-container button',
+      'button.btn-common-play-game-lg',
+      'button[class*="btn-primary-md"][class*="play"]'
+    ];
+
+    let playButton = null;
+    for (const selector of playButtonSelectors) {
+      playButton = document.querySelector(selector);
+      if (playButton) {
+        console.log('[RRS] Found play button with selector:', selector);
+        break;
+      }
+    }
+
+    if (!playButton) {
+      console.log('[RRS] No play button found');
+      return;
+    }
+
+    if (document.getElementById('rrs-region-button')) {
+      console.log('[RRS] Button already exists');
+      return;
+    }
+
+    // Extract place ID from URL
+    const match = window.location.pathname.match(/\/games\/(\d+)/);
+    if (!match) {
+      console.log('[RRS] No game ID in URL');
+      return;
+    }
+    currentPlaceId = match[1];
+    console.log('[RRS] Game ID:', currentPlaceId);
+
+    // Create our button
+    const regionButton = document.createElement('button');
+    regionButton.id = 'rrs-region-button';
+    regionButton.innerHTML = `
+      <img src="${chrome.runtime.getURL('icons/icon48.png')}" style="width: 28px; height: 28px; vertical-align: middle;" />
+    `;
+
+    // Style to match Roblox button with blue color
+    const playButtonStyles = window.getComputedStyle(playButton);
+    regionButton.style.cssText = `
+      background: #4181FA;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: ${playButtonStyles.fontFamily};
+      height: ${playButtonStyles.height};
+      margin-right: 8px;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    `;
+
+    regionButton.addEventListener('mouseenter', () => {
+      regionButton.style.background = '#3366CC';
+      regionButton.style.transform = 'scale(1.05)';
+    });
+
+    regionButton.addEventListener('mouseleave', () => {
+      regionButton.style.background = '#4181FA';
+      regionButton.style.transform = 'scale(1)';
+    });
+
+    regionButton.addEventListener('click', () => {
+      openGlobeOverlay();
+    });
+
+    // Insert before play button
+    playButton.parentNode.insertBefore(regionButton, playButton);
+
+    // Slightly shrink the play button to make room
+    const currentWidth = playButton.offsetWidth;
+    playButton.style.width = `${currentWidth - 60}px`;
+
+    console.log('[Roblox Region Selector] Region button injected');
+  }
+
+  // Try to inject button with retries
+  let injectionAttempts = 0;
+  const maxAttempts = 20;
+  const injectionInterval = setInterval(() => {
+    injectRegionButton();
+    injectionAttempts++;
+    if (injectionAttempts >= maxAttempts || document.getElementById('rrs-region-button')) {
+      clearInterval(injectionInterval);
+    }
+  }, 500);
+
+  // Also watch for DOM changes
+  const observer = new MutationObserver(() => {
+    injectRegionButton();
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // Open globe overlay
+  async function openGlobeOverlay() {
+    if (document.getElementById('rrs-globe-overlay')) return;
+
+    // Create overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'rrs-globe-overlay';
+    overlay.innerHTML = `
+      <style>
+        #rrs-globe-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(0, 0, 0, 0.85);
+          backdrop-filter: blur(10px);
+          z-index: 999999;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          animation: rrs-fadeIn 0.3s ease;
+        }
+
+        @keyframes rrs-fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes rrs-fadeOut {
+          from { opacity: 1; }
+          to { opacity: 0; }
+        }
+
+        @keyframes rrs-globePopIn {
+          0% {
+            opacity: 0;
+            transform: scale(0.5) translateX(0);
+          }
+          60% {
+            transform: scale(1.1) translateX(0);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1) translateX(0);
+          }
+        }
+
+        #rrs-status-bar {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 15px;
+          color: white;
+          font-size: 18px;
+          font-family: 'Segoe UI', sans-serif;
+          font-weight: 500;
+          margin-bottom: 30px;
+          opacity: 0;
+          animation: rrs-fadeIn 0.5s ease 0.3s forwards;
+        }
+
+        #rrs-status-logo {
+          width: 32px;
+          height: 32px;
+        }
+
+        #rrs-status-text {
+          color: white;
+        }
+
+        .rrs-mini-spinner {
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-top: 2px solid #4181FA;
+          border-radius: 50%;
+          width: 20px;
+          height: 20px;
+          animation: rrs-spin 1s linear infinite;
+        }
+
+        .rrs-mini-spinner.hidden {
+          display: none;
+        }
+
+        @keyframes rrs-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        #rrs-globe-container {
+          position: relative;
+          width: 600px;
+          height: 600px;
+          transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          animation: rrs-globePopIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        #rrs-globe-container.shifted {
+          transform: translateX(-200px);
+        }
+
+        #rrs-globe {
+          width: 100%;
+          height: 100%;
+          position: relative;
+          cursor: grab;
+          user-select: none;
+        }
+
+        #rrs-globe:active {
+          cursor: grabbing;
+        }
+
+        .rrs-region-dot {
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .rrs-region-dot:hover {
+          r: 12 !important;
+        }
+
+        .rrs-region-dot.inactive {
+          fill: #666;
+        }
+
+        .rrs-region-dot.active {
+          fill: #4181FA;
+          filter: drop-shadow(0 0 8px rgba(65, 129, 250, 0.8));
+        }
+
+        #rrs-close-btn {
+          position: absolute;
+          top: 20px;
+          right: 20px;
+          width: 40px;
+          height: 40px;
+          background: rgba(255, 255, 255, 0.1);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-radius: 50%;
+          color: white;
+          font-size: 24px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+          z-index: 10;
+        }
+
+        #rrs-close-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          transform: scale(1.1);
+        }
+
+        #rrs-server-list {
+          position: fixed;
+          left: 50%;
+          top: 50%;
+          transform: translate(calc(-50% + 100px), -50%);
+          width: 450px;
+          max-height: 80vh;
+          background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+          border-radius: 16px;
+          padding: 30px;
+          opacity: 0;
+          pointer-events: none;
+          transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          overflow-y: auto;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          z-index: 1;
+        }
+
+        #rrs-server-list.visible {
+          transform: translate(calc(-50% + 350px), -50%);
+          opacity: 1;
+          pointer-events: auto;
+        }
+
+        .rrs-server-item {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 15px;
+          transition: all 0.2s ease;
+        }
+
+        .rrs-server-item:hover {
+          background: rgba(255, 255, 255, 0.08);
+          transform: translateY(-2px);
+          box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .rrs-server-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 15px;
+        }
+
+        .rrs-player-count {
+          color: #4181FA;
+          font-weight: 600;
+          font-size: 16px;
+        }
+
+        .rrs-player-avatars {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 15px;
+          flex-wrap: wrap;
+        }
+
+        .rrs-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          border: 2px solid rgba(255, 255, 255, 0.2);
+          object-fit: cover;
+        }
+
+        .rrs-join-btn {
+          background: #4181FA;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 12px 24px;
+          font-weight: 600;
+          cursor: pointer;
+          width: 100%;
+          margin-top: 10px;
+          transition: all 0.2s ease;
+          font-size: 14px;
+        }
+
+        .rrs-join-btn:hover {
+          background: #3366CC;
+          transform: scale(1.02);
+        }
+
+        .rrs-region-header {
+          color: white;
+          font-size: 24px;
+          font-weight: 600;
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+
+        .rrs-region-flag {
+          font-size: 32px;
+        }
+
+        .rrs-tooltip {
+          position: fixed;
+          background: rgba(0, 0, 0, 0.9);
+          color: white;
+          padding: 8px 12px;
+          border-radius: 6px;
+          font-size: 14px;
+          font-family: 'Segoe UI', sans-serif;
+          pointer-events: none;
+          z-index: 10000;
+          opacity: 0;
+          transition: opacity 0.2s ease;
+        }
+
+        .rrs-tooltip.visible {
+          opacity: 1;
+        }
+
+        #rrs-server-list::-webkit-scrollbar {
+          width: 8px;
+        }
+
+        #rrs-server-list::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 4px;
+        }
+
+        #rrs-server-list::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 4px;
+        }
+
+        #rrs-server-list::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.3);
+        }
+      </style>
+
+      <div id="rrs-close-btn">×</div>
+
+      <div id="rrs-status-bar">
+        <img id="rrs-status-logo" src="${chrome.runtime.getURL('icons/icon128.png')}" />
+        <span id="rrs-status-text">Searching for servers...</span>
+        <div class="rrs-mini-spinner" id="rrs-mini-spinner"></div>
+      </div>
+
+      <div id="rrs-globe-container">
+        <div id="rrs-globe"></div>
+      </div>
+
+      <div id="rrs-server-list"></div>
+
+      <div class="rrs-tooltip" id="rrs-tooltip"></div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Close button handler
+    document.getElementById('rrs-close-btn').addEventListener('click', closeGlobeOverlay);
+
+    // Click outside to close
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        closeGlobeOverlay();
+      }
+    });
+
+    // Render globe immediately (with all gray dots) and store reference
+    globeRendererInstance = renderGlobe();
+
+    // Start scanning servers in real-time
+    scanServersForRegionsRealtime();
+  }
+
+  function closeGlobeOverlay() {
+    const overlay = document.getElementById('rrs-globe-overlay');
+    if (overlay) {
+      overlay.style.animation = 'rrs-fadeOut 0.3s ease';
+      setTimeout(() => {
+        overlay.remove();
+        globeRendererInstance = null; // Clean up reference
+      }, 300);
+    }
+  }
+
+  // Global reference to globe renderer for real-time updates
+  let globeRendererInstance = null;
+
+  // Real-time server scanning - updates globe as regions are discovered
+  async function scanServersForRegionsRealtime() {
+    regionServerCounts = {};
+
+    // Update status
+    const statusText = document.getElementById('rrs-status-text');
+    const miniSpinner = document.getElementById('rrs-mini-spinner');
+
+    // Fetch all servers
+    statusText.textContent = 'Loading servers...';
+    allServers = await fetchAllServers(currentPlaceId);
+
+    if (!allServers || allServers.length === 0) {
+      statusText.textContent = 'No servers found';
+      miniSpinner.classList.add('hidden');
+      return;
+    }
+
+    // Ensure we scan at least 1000 servers (or all if less than 1000)
+    const minServersToScan = 1000;
+    const serversToScan = Math.min(allServers.length, Math.max(minServersToScan, allServers.length));
+    const scanList = allServers.slice(0, serversToScan);
+
+    console.log(`[RRS] Fetched ${allServers.length} servers, will scan ${scanList.length} for regions`);
+    statusText.textContent = `Scanning regions... (0/${scanList.length})`;
+
+    // Check regions in batches with real-time updates
+    const batchSize = 10;
+    const batchDelay = 300;
+
+    for (let i = 0; i < scanList.length; i += batchSize) {
+      const batch = scanList.slice(i, i + batchSize);
+      const progress = Math.min(i + batchSize, scanList.length);
+
+      // Update status
+      statusText.textContent = `Scanning regions... (${progress}/${scanList.length})`;
+
+      // Add delay between batches
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, batchDelay));
+      }
+
+      // Check batch regions
+      const batchPromises = batch.map(server =>
+        getServerRegion(currentPlaceId, server.id).then(region => ({
+          ...server,
+          region: region
+        }))
+      );
+
+      const batchResults = await Promise.allSettled(batchPromises);
+
+      // Update region counts and store region info in allServers
+      let newRegionFound = false;
+      batchResults.forEach((result, idx) => {
+        if (result.status === 'fulfilled' && result.value.region) {
+          const region = result.value.region;
+          const serverIndex = i + idx;
+
+          // Store region in allServers array
+          if (allServers[serverIndex]) {
+            allServers[serverIndex].region = region;
+          }
+
+          if (region !== 'unknown') {
+            if (!regionServerCounts[region]) {
+              newRegionFound = true;
+              console.log(`[RRS] New region discovered: ${region}`);
+            }
+            regionServerCounts[region] = (regionServerCounts[region] || 0) + 1;
+          }
+        }
+      });
+
+      // Re-render globe to update dots if new region found
+      if (newRegionFound && globeRendererInstance) {
+        globeRendererInstance.updateDots();
+      }
+
+      // Log progress
+      const regionsFound = Object.keys(regionServerCounts).length;
+      console.log(`[RRS] Progress: ${progress}/${scanList.length} scanned, ${regionsFound} regions found, ${Object.values(regionServerCounts).reduce((a,b) => a+b, 0)} servers mapped`);
+    }
+
+    console.log('[RRS] Real-time scan complete:', regionServerCounts);
+
+    // Update status - scanning complete
+    const totalMapped = Object.values(regionServerCounts).reduce((a,b) => a+b, 0);
+    statusText.textContent = `Found ${Object.keys(regionServerCounts).length} regions (${totalMapped} servers)`;
+    miniSpinner.classList.add('hidden');
+  }
+
+
+  //
+  // Render 3D globe with FIXED orientation and texture mapping
+  function renderGlobe() {
+    const globe = document.getElementById('rrs-globe');
+    const displaySize = 600;
+    const renderSize = 400; // Reduced internal resolution for performance
+    const centerX = renderSize / 2;
+    const centerY = renderSize / 2;
+    const radius = renderSize * 0.42; // Slightly smaller for better fit
+
+    let rotationX = -40; // Start showing Americas (negative = rotate west)
+    let rotationY = 0;
+    let isDragging = false;
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+
+    // Create canvas for globe rendering
+    const canvas = document.createElement('canvas');
+    canvas.width = renderSize;
+    canvas.height = renderSize;
+    canvas.style.width = displaySize + 'px';
+    canvas.style.height = displaySize + 'px';
+    canvas.style.cursor = 'grab';
+    globe.innerHTML = '';
+    globe.appendChild(canvas);
+
+    const ctx = canvas.getContext('2d', { alpha: true });
+
+    // Load world map texture
+    const mapImage = new Image();
+    mapImage.crossOrigin = 'anonymous';
+    mapImage.src = WORLD_MAP_URL;
+
+    // Pre-create texture data canvas
+    let mapData = null;
+    let mapCanvas = null;
+
+    mapImage.onload = function() {
+      mapCanvas = document.createElement('canvas');
+      mapCanvas.width = mapImage.width;
+      mapCanvas.height = mapImage.height;
+      const mapCtx = mapCanvas.getContext('2d');
+      mapCtx.drawImage(mapImage, 0, 0);
+      mapData = mapCtx.getImageData(0, 0, mapImage.width, mapImage.height).data;
+      render();
+    };
+
+    function render() {
+      // Clear canvas
+      ctx.clearRect(0, 0, renderSize, renderSize);
+
+      // Draw background sphere (full opaque background)
+      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+      gradient.addColorStop(0, 'rgba(40, 50, 70, 1)');
+      gradient.addColorStop(1, 'rgba(20, 25, 35, 1)');
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw textured globe with FIXED orientation
+      if (mapData) {
+        const imageData = ctx.createImageData(renderSize, renderSize);
+        const data = imageData.data;
+
+        const rotXRad = rotationX * Math.PI / 180;
+        const rotYRad = -rotationY * Math.PI / 180; // FIXED: Inverted Y rotation for correct up/down
+
+        // Precompute rotation matrices
+        const cosRotX = Math.cos(rotXRad);
+        const sinRotX = Math.sin(rotXRad);
+        const cosRotY = Math.cos(rotYRad);
+        const sinRotY = Math.sin(rotYRad);
+
+        // For each pixel
+        for (let y = 0; y < renderSize; y++) {
+          for (let x = 0; x < renderSize; x++) {
+            const dx = x - centerX;
+            const dy = y - centerY;
+            const distSq = dx * dx + dy * dy;
+
+            // Check if within sphere
+            if (distSq <= radius * radius) {
+              // Calculate z coordinate (depth into screen)
+              const dz = Math.sqrt(radius * radius - distSq);
+
+              // Initial 3D point on sphere (normalized)
+              let nx = dx / radius;
+              let ny = dy / radius;
+              let nz = dz / radius;
+
+              // Apply Y-axis rotation (horizontal spin)
+              const nx_rotated = nx * cosRotX - nz * sinRotX; // FIXED: Changed + to - for correct rotation
+              const nz_rotated = nx * sinRotX + nz * cosRotX;
+              nx = nx_rotated;
+              nz = nz_rotated;
+
+              // Apply X-axis rotation (vertical tilt)
+              const ny_rotated = ny * cosRotY - nz * sinRotY;
+              const nz_final = ny * sinRotY + nz * cosRotY;
+              ny = ny_rotated;
+              nz = nz_final;
+
+              // FIXED: Render both hemispheres - check if we should show the pixel
+              // Use a small threshold instead of strict > 0 to avoid artifacts
+              const shouldRender = nz > -0.1;
+
+              if (shouldRender) {
+                // FIXED: Corrected UV mapping (removed negation, flipped v axis)
+                const u = (Math.atan2(nx, nz) / (2 * Math.PI)) + 0.5;
+                const v = 0.5 - (Math.asin(ny) / Math.PI); // FIXED: Flipped v coordinate
+
+                // Sample texture
+                const tx = Math.floor(u * (mapImage.width - 1));
+                const ty = Math.floor(v * (mapImage.height - 1));
+                const mapIdx = (ty * mapImage.width + tx) * 4;
+
+                // Calculate brightness based on depth (for 3D effect)
+                const brightness = nz > 0 ? 1.0 : 0.3 + (nz + 1) * 0.3;
+
+                // Write pixel with brightness adjustment
+                const idx = (y * renderSize + x) * 4;
+                data[idx] = mapData[mapIdx] * brightness;
+                data[idx + 1] = mapData[mapIdx + 1] * brightness;
+                data[idx + 2] = mapData[mapIdx + 2] * brightness;
+                data[idx + 3] = 255; // FIXED: Full opacity to prevent see-through
+              }
+            }
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+      }
+
+      // Draw grid lines
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+      ctx.lineWidth = 1;
+
+      // Draw latitude lines
+      for (let lat = -60; lat <= 60; lat += 30) {
+        ctx.beginPath();
+        let firstPoint = true;
+        for (let lon = -180; lon <= 180; lon += 5) {
+          const point = projectPointToScreen(lat, lon);
+          if (point.visible) {
+            if (firstPoint) {
+              ctx.moveTo(point.x, point.y);
+              firstPoint = false;
+            } else {
+              ctx.lineTo(point.x, point.y);
+            }
+          }
+        }
+        ctx.stroke();
+      }
+
+      // Draw longitude lines
+      for (let lon = -180; lon < 180; lon += 30) {
+        ctx.beginPath();
+        let firstPoint = true;
+        for (let lat = -90; lat <= 90; lat += 5) {
+          const point = projectPointToScreen(lat, lon);
+          if (point.visible) {
+            if (firstPoint) {
+              ctx.moveTo(point.x, point.y);
+              firstPoint = false;
+            } else {
+              ctx.lineTo(point.x, point.y);
+            }
+          }
+        }
+        ctx.stroke();
+      }
+
+      // Draw outline
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Draw region dots
+      const regions = Object.entries(REGION_COORDS).map(([code, data]) => {
+        const point = projectPointToScreen(data.lat, data.lon);
+        const serverCount = regionServerCounts[code] || 0;
+        const isActive = serverCount > 0;
+
+        return {
+          code,
+          data,
+          point,
+          serverCount,
+          isActive
+        };
+      }).filter(r => r.point.visible)
+        .sort((a, b) => a.point.z - b.point.z);
+
+      regions.forEach(region => {
+        const dotSize = 8 * region.point.scale;
+        ctx.fillStyle = region.isActive ? '#4181FA' : '#666';
+
+        if (region.isActive) {
+          ctx.shadowColor = 'rgba(65, 129, 250, 0.8)';
+          ctx.shadowBlur = 8;
+        }
+
+        ctx.beginPath();
+        ctx.arc(region.point.x, region.point.y, dotSize, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+      });
+
+      // Store region positions for click detection
+      canvas.regionPositions = regions;
+    }
+
+    // FIXED: Corrected projection to match texture orientation
+    function projectPointToScreen(lat, lon) {
+      // Convert lat/lon to normalized 3D coordinates
+      const latRad = lat * (Math.PI / 180);
+      const lonRad = lon * (Math.PI / 180);
+
+      // Standard spherical to Cartesian conversion
+      let nx = Math.cos(latRad) * Math.sin(lonRad);
+      let ny = -Math.sin(latRad); // FIXED: Negated for correct orientation
+      let nz = Math.cos(latRad) * Math.cos(lonRad);
+
+      // Apply Y-axis rotation (horizontal spin) - matching texture rotation
+      const rotXRad = rotationX * (Math.PI / 180);
+      const cosRotX = Math.cos(rotXRad);
+      const sinRotX = Math.sin(rotXRad);
+      const nx_rotated = nx * cosRotX - nz * sinRotX; // FIXED: Changed + to -
+      const nz_rotated = nx * sinRotX + nz * cosRotX;
+      nx = nx_rotated;
+      nz = nz_rotated;
+
+      // Apply X-axis rotation (vertical tilt) - matching texture rotation
+      const rotYRad = -rotationY * (Math.PI / 180); // FIXED: Inverted Y rotation
+      const cosRotY = Math.cos(rotYRad);
+      const sinRotY = Math.sin(rotYRad);
+      const ny_rotated = ny * cosRotY - nz * sinRotY;
+      const nz_final = ny * sinRotY + nz * cosRotY;
+      ny = ny_rotated;
+      nz = nz_final;
+
+      // Scale back to radius
+      const x = nx * radius;
+      const y = ny * radius;
+      const z = nz;
+
+      const perspective = 600;
+      const scale = perspective / (perspective + z * radius);
+
+      return {
+        x: centerX + x * scale,
+        y: centerY + y * scale,
+        visible: nz > -0.1, // FIXED: Show more of the globe
+        scale: scale,
+        z: z * radius
+      };
+    }
+
+    // Mouse events for dragging (optimized with RAF)
+    let renderScheduled = false;
+    function scheduleRender() {
+      if (!renderScheduled) {
+        renderScheduled = true;
+        requestAnimationFrame(() => {
+          render();
+          renderScheduled = false;
+        });
+      }
+    }
+
+    // Scale factor for mouse coordinates (display size / render size)
+    const coordScale = renderSize / displaySize;
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+      canvas.style.cursor = 'grabbing';
+      e.preventDefault();
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const deltaX = e.clientX - lastMouseX;
+        const deltaY = e.clientY - lastMouseY;
+
+        // FIXED: Inverted controls are now correct
+        rotationX += deltaX * 0.5;
+        rotationY = Math.max(-45, Math.min(45, rotationY - deltaY * 0.3)); // FIXED: Changed + to -
+
+        lastMouseX = e.clientX;
+        lastMouseY = e.clientY;
+
+        scheduleRender();
+      } else {
+        // Check hover on dots
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left) * coordScale;
+        const mouseY = (e.clientY - rect.top) * coordScale;
+
+        if (canvas.regionPositions) {
+          const tooltip = document.getElementById('rrs-tooltip');
+          let hovering = false;
+
+          for (const region of canvas.regionPositions) {
+            const dist = Math.sqrt(
+              Math.pow(mouseX - region.point.x, 2) +
+              Math.pow(mouseY - region.point.y, 2)
+            );
+            const dotSize = 8 * region.point.scale;
+
+            if (dist <= dotSize) {
+              tooltip.textContent = `${region.data.name}: ${region.serverCount} server${region.serverCount !== 1 ? 's' : ''}`;
+              tooltip.style.left = e.pageX + 10 + 'px';
+              tooltip.style.top = e.pageY + 10 + 'px';
+              tooltip.classList.add('visible');
+              canvas.style.cursor = 'pointer';
+              hovering = true;
+              break;
+            }
+          }
+
+          if (!hovering) {
+            tooltip.classList.remove('visible');
+            canvas.style.cursor = 'grab';
+          }
+        }
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+      canvas.style.cursor = 'grab';
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+      canvas.style.cursor = 'grab';
+      const tooltip = document.getElementById('rrs-tooltip');
+      tooltip.classList.remove('visible');
+    });
+
+    canvas.addEventListener('click', (e) => {
+      if (!isDragging) {
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = (e.clientX - rect.left) * coordScale;
+        const mouseY = (e.clientY - rect.top) * coordScale;
+
+        if (canvas.regionPositions) {
+          for (const region of canvas.regionPositions) {
+            const dist = Math.sqrt(
+              Math.pow(mouseX - region.point.x, 2) +
+              Math.pow(mouseY - region.point.y, 2)
+            );
+            const dotSize = 8 * region.point.scale;
+
+            if (dist <= dotSize && region.serverCount > 0) {
+              showServerList(region.code);
+              break;
+            }
+          }
+        }
+      }
+    });
+
+    // Return API for external updates
+    return {
+      updateDots: function() {
+        // Trigger re-render to update dots
+        scheduleRender();
+      }
+    };
+  }
+
+  // FIXED: Show server list with player avatars
+  async function showServerList(regionCode) {
+    // If clicking the same region, do nothing
+    if (currentSelectedRegion === regionCode) {
+      return;
+    }
+
+    const serverList = document.getElementById('rrs-server-list');
+    const globeContainer = document.getElementById('rrs-globe-container');
+
+    // If there's already a region selected, animate out first
+    if (currentSelectedRegion !== null) {
+      // Slide out and fade out current server list
+      serverList.classList.remove('visible');
+      globeContainer.classList.remove('shifted');
+
+      // Wait for animation to complete
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
+
+    // Update current selection
+    currentSelectedRegion = regionCode;
+
+    const regionData = REGION_COORDS[regionCode];
+    const regionServers = allServers.filter(s => s.region === regionCode);
+
+    // Sort by player count (high to low)
+    regionServers.sort((a, b) => b.playing - a.playing);
+
+    // Build server list HTML
+    const locationName = regionData.state
+      ? `${regionData.name}, ${regionData.state}`
+      : regionData.name;
+
+    let html = `
+      <div class="rrs-region-header">
+        <span class="rrs-region-flag">${regionData.flag}</span>
+        <span>${locationName}</span>
+      </div>
+    `;
+
+    // FIXED: Add servers with player avatars
+    for (const server of regionServers) {
+      // Get player avatars (limit to 6 players)
+      const playerIds = server.playerTokens ? server.playerTokens.slice(0, 6) : [];
+
+      let avatarsHtml = '';
+      if (playerIds.length > 0) {
+        avatarsHtml = '<div class="rrs-player-avatars">';
+        for (const token of playerIds) {
+          // Extract user ID from token if possible, otherwise use placeholder
+          // Roblox avatar API: https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={ids}&size=48x48&format=Png
+          avatarsHtml += `<img class="rrs-avatar" src="https://www.roblox.com/headshot-thumbnail/image?userId=${token}&width=48&height=48&format=png" onerror="this.src='${chrome.runtime.getURL('icons/icon48.png')}'" />`;
+        }
+        avatarsHtml += '</div>';
+      }
+
+      html += `
+        <div class="rrs-server-item">
+          <div class="rrs-server-header">
+            <span class="rrs-player-count">${server.playing}/${server.maxPlayers} players</span>
+          </div>
+          ${avatarsHtml}
+          <button class="rrs-join-btn" data-server-id="${server.id}">Join Server</button>
+        </div>
+      `;
+    }
+
+    const serverListElem = document.getElementById('rrs-server-list');
+    serverListElem.innerHTML = html;
+
+    // Shift globe left and show server list with animation
+    setTimeout(() => {
+      globeContainer.classList.add('shifted');
+      serverListElem.classList.add('visible');
+    }, 100);
+
+    // Add join button handlers
+    serverListElem.querySelectorAll('.rrs-join-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const serverId = btn.getAttribute('data-server-id');
+        joinServer(serverId);
+      });
     });
   }
 
-  // Load preference immediately
-  loadRegionPreference();
+  // Join a specific server
+  async function joinServer(serverId) {
+    console.log('[Roblox Region Selector] Joining server:', serverId);
 
-  // Listen for storage changes (when user updates preference from popup)
-  chrome.storage.onChanged.addListener(function(changes, namespace) {
-    if (namespace === 'local' && changes.preferredRegion) {
-      currentRegion = changes.preferredRegion.newValue || 'auto';
-      console.log('[Roblox Region Selector] Region preference updated to:', currentRegion);
-      
-      // Notify page context about the new preference
-      window.postMessage({
-        type: 'UPDATE_REGION_PREFERENCE',
-        region: currentRegion
-      }, window.location.origin);
+    // Close overlay
+    closeGlobeOverlay();
+
+    // Join via injector
+    window.postMessage({
+      type: 'JOIN_SPECIFIC_SERVER',
+      placeId: currentPlaceId,
+      serverId: serverId
+    }, window.location.origin);
+
+    // Show thank you popup after a short delay
+    setTimeout(() => {
+      showThankYouPopup();
+    }, 1000);
+  }
+
+  // Show thank you popup
+  function showThankYouPopup() {
+    const popup = document.createElement('div');
+    popup.id = 'rrs-thankyou-popup';
+    popup.innerHTML = `
+      <style>
+        #rrs-thankyou-popup {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 100vw;
+          height: 100vh;
+          background: rgba(0, 0, 0, 0.85);
+          backdrop-filter: blur(10px);
+          z-index: 999999;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          animation: rrs-fadeIn 0.3s ease;
+        }
+
+        #rrs-thankyou-content {
+          background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+          border-radius: 20px;
+          padding: 50px;
+          text-align: center;
+          max-width: 500px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        #rrs-thankyou-content img {
+          width: 100px;
+          height: 100px;
+          margin-bottom: 30px;
+        }
+
+        #rrs-thankyou-content h2 {
+          color: white;
+          font-family: 'Segoe UI', sans-serif;
+          font-size: 28px;
+          margin-bottom: 15px;
+        }
+
+        #rrs-thankyou-content p {
+          color: #ccc;
+          font-family: 'Segoe UI', sans-serif;
+          font-size: 16px;
+          line-height: 1.6;
+          margin-bottom: 30px;
+        }
+
+        .rrs-thankyou-btn {
+          background: #4181FA;
+          color: white;
+          border: none;
+          border-radius: 8px;
+          padding: 14px 30px;
+          font-weight: 600;
+          cursor: pointer;
+          font-size: 16px;
+          transition: all 0.2s ease;
+          font-family: 'Segoe UI', sans-serif;
+          margin: 0 10px;
+        }
+
+        .rrs-thankyou-btn:hover {
+          background: #3366CC;
+          transform: scale(1.05);
+        }
+
+        .rrs-thankyou-btn.secondary {
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        .rrs-thankyou-btn.secondary:hover {
+          background: rgba(255, 255, 255, 0.2);
+        }
+      </style>
+
+      <div id="rrs-thankyou-content">
+        <img src="${chrome.runtime.getURL('icons/icon128.png')}" />
+        <h2>Thank You!</h2>
+        <p>Thank you for using Roblox Region Selector! Your server is loading. If you enjoyed this extension, please consider rating us.</p>
+        <button class="rrs-thankyou-btn" id="rrs-rate-btn">Rate Extension</button>
+        <button class="rrs-thankyou-btn secondary" id="rrs-close-thankyou">Close</button>
+      </div>
+    `;
+
+    document.body.appendChild(popup);
+
+    // Close button
+    document.getElementById('rrs-close-thankyou').addEventListener('click', () => {
+      popup.remove();
+    });
+
+    // Rate button
+    document.getElementById('rrs-rate-btn').addEventListener('click', () => {
+      window.open('https://chrome.google.com/webstore', '_blank');
+      popup.remove();
+    });
+
+    // Auto close after 10 seconds
+    setTimeout(() => {
+      if (popup.parentNode) {
+        popup.remove();
+      }
+    }, 10000);
+  }
+
+  // Helper: Fetch all servers
+  async function fetchAllServers(placeId) {
+    const allServers = [];
+    let cursor = '';
+    const maxPages = 15; // Fetch up to 1500 servers (15 pages * 100)
+
+    console.log('[RRS] Starting to fetch servers...');
+
+    for (let page = 0; page < maxPages; page++) {
+      try {
+        const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100${cursor ? '&cursor=' + cursor : ''}`;
+
+        // Add delay between pages to avoid rate limiting (150ms)
+        if (page > 0) {
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          console.log(`[RRS] Fetch failed with status ${response.status}, stopping at page ${page}`);
+          break;
+        }
+
+        const data = await response.json();
+        if (!data.data || data.data.length === 0) {
+          console.log(`[RRS] No more servers found at page ${page}`);
+          break;
+        }
+
+        allServers.push(...data.data);
+        console.log(`[RRS] Fetched page ${page + 1}: ${data.data.length} servers (total: ${allServers.length})`);
+
+        if (data.nextPageCursor) {
+          cursor = data.nextPageCursor;
+        } else {
+          console.log(`[RRS] No more pages available`);
+          break;
+        }
+      } catch (error) {
+        console.error('[RRS] Error fetching servers:', error);
+        break;
+      }
     }
-  });
 
-  // Listen for region changes from popup (backup method)
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'regionChanged') {
-      currentRegion = message.region;
-      console.log('[Roblox Region Selector] Region preference updated to:', currentRegion);
-      
-      // Notify page context about the new preference
-      window.postMessage({
-        type: 'UPDATE_REGION_PREFERENCE',
-        region: currentRegion
-      }, window.location.origin);
+    console.log(`[RRS] Total servers fetched: ${allServers.length}`);
+    return allServers;
+  }
+
+  // Helper: Get server region with retry logic
+  async function getServerRegion(placeId, serverId, retries = 2) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Add exponential backoff delay for retries
+        if (attempt > 0) {
+          const delay = Math.pow(2, attempt) * 100; // 200ms, 400ms
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+
+        const response = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({
+            action: 'getServerDetails',
+            placeId: placeId,
+            serverId: serverId
+          }, (response) => {
+            resolve(response);
+          });
+        });
+
+        if (response && response.success && response.region) {
+          return response.region;
+        }
+
+        // If we got a response but no region, don't retry
+        if (response && response.success) {
+          return 'unknown';
+        }
+      } catch (error) {
+        if (attempt === retries) {
+          console.error('[RRS] Error getting server region after retries:', error);
+        }
+      }
     }
-  });
+    return 'unknown';
+  }
 
-  // Inject the injector script into page context
+  // Inject the injector script
   function injectScript() {
     const script = document.createElement('script');
     script.src = chrome.runtime.getURL('injector.js');
@@ -63,357 +1272,10 @@
     (document.head || document.documentElement).appendChild(script);
   }
 
-  // Wait for page to be ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', injectScript);
   } else {
     injectScript();
-  }
-
-  // Listen for play button clicks
-  window.addEventListener('message', function(event) {
-    if (event.origin !== window.location.origin) {
-      return;
-    }
-    
-    if (event.data && event.data.type === 'PLAY_BUTTON_CLICKED') {
-      console.log('[Roblox Region Selector] Received PLAY_BUTTON_CLICKED message');
-      handlePlayButtonClick(event.data.placeId);
-    }
-  });
-
-  async function handlePlayButtonClick(placeId) {
-    console.log('[Roblox Region Selector] handlePlayButtonClick called with placeId:', placeId);
-    console.log('[Roblox Region Selector] Current region:', currentRegion);
-    console.log('[Roblox Region Selector] isSearching:', isSearching);
-    
-    // If region is auto or not set, don't intercept - let Roblox handle it
-    if (!currentRegion || currentRegion === 'auto') {
-      console.log('[Roblox Region Selector] Auto mode, allowing normal join');
-      return;
-    }
-
-    if (isSearching) {
-      console.log('[Roblox Region Selector] Already searching for server');
-      return;
-    }
-
-    console.log('[Roblox Region Selector] Play button intercepted, searching for', currentRegion, 'server');
-    isSearching = true;
-
-    // Show searching popup
-    showSearchingPopup();
-
-    try {
-      // Find a server in the preferred region using fast parallel method
-      const server = await findServerInRegionFast(placeId, currentRegion);
-      
-      if (server) {
-        updateSearchingPopup('Found server! Joining...', false);
-        
-        // Join the server
-        window.postMessage({
-          type: 'JOIN_SPECIFIC_SERVER',
-          placeId: placeId,
-          serverId: server.id
-        }, window.location.origin);
-        
-        // Close popup after a short delay
-        setTimeout(() => {
-          closeSearchingPopup();
-          isSearching = false;
-        }, 1000);
-      } else {
-        updateSearchingPopup(`No servers found in ${getRegionName(currentRegion)}. Try again or select a different region.`, true);
-        setTimeout(() => {
-          closeSearchingPopup();
-          isSearching = false;
-        }, 3000);
-      }
-    } catch (error) {
-      console.error('[Roblox Region Selector] Error finding server:', error);
-      updateSearchingPopup('Error finding server. Please try again.', true);
-      setTimeout(() => {
-        closeSearchingPopup();
-        isSearching = false;
-      }, 3000);
-    }
-  }
-
-  async function findServerInRegionFast(placeId, regionCode) {
-    const startTime = Date.now();
-    updateSearchingPopup('Fetching server list...', false);
-    
-    // Fetch all available servers (up to 500)
-    const allServers = await fetchAllServers(placeId);
-    
-    if (!allServers || allServers.length === 0) {
-      console.log('[Roblox Region Selector] No servers found');
-      return null;
-    }
-    
-    // Determine max server size from the fetched servers
-    const maxServerSize = Math.max(...allServers.map(s => s.maxPlayers || 0));
-    console.log('[Roblox Region Selector] Max server size:', maxServerSize);
-    
-    // Calculate ideal player count range: maxSize/2 to maxSize/1.3
-    const minIdealPlayers = Math.floor(maxServerSize / 2);
-    const maxIdealPlayers = Math.floor(maxServerSize / 1.3);
-    console.log('[Roblox Region Selector] Ideal player range:', minIdealPlayers, '-', maxIdealPlayers);
-    
-    console.log('[Roblox Region Selector] Found', allServers.length, 'servers total');
-    updateSearchingPopup(`Checking regions for ${allServers.length} servers...`, false);
-    
-    // Check all servers in parallel (batch of 20 at a time to avoid overwhelming)
-    const batchSize = 20;
-    const serversWithRegions = [];
-    
-    for (let i = 0; i < allServers.length; i += batchSize) {
-      const batch = allServers.slice(i, i + batchSize);
-      const progress = Math.min(i + batchSize, allServers.length);
-      updateSearchingPopup(`Analyzing servers... (${progress}/${allServers.length})`, false);
-      
-      // Check all servers in this batch in parallel
-      const batchPromises = batch.map(server => 
-        getServerRegion(placeId, server.id).then(region => ({
-          ...server,
-          region: region
-        }))
-      );
-      
-      const batchResults = await Promise.all(batchPromises);
-      serversWithRegions.push(...batchResults);
-      
-      // If we found a matching server in the preferred region with ideal player count, we can stop early
-      const idealServer = batchResults.find(s => 
-        s.region === regionCode && 
-        s.playing >= minIdealPlayers && 
-        s.playing <= maxIdealPlayers
-      );
-      
-      if (idealServer) {
-        console.log('[Roblox Region Selector] Found ideal server early:', idealServer.id, 'with', idealServer.playing, 'players');
-        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[Roblox Region Selector] Search completed in ${elapsed}s`);
-        return idealServer;
-      }
-    }
-    
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`[Roblox Region Selector] Search completed in ${elapsed}s`);
-    
-    // Filter servers by region
-    const matchingServers = serversWithRegions.filter(s => s.region === regionCode);
-    
-    if (matchingServers.length === 0) {
-      console.log('[Roblox Region Selector] No matching servers found for region:', regionCode);
-      return null;
-    }
-    
-    console.log('[Roblox Region Selector] Found', matchingServers.length, 'servers in', regionCode);
-    
-    // Prefer servers in the ideal player count range
-    const idealServers = matchingServers.filter(s => 
-      s.playing >= minIdealPlayers && s.playing <= maxIdealPlayers
-    );
-    
-    if (idealServers.length > 0) {
-      console.log('[Roblox Region Selector] Selecting ideal server with', idealServers[0].playing, 'players');
-      return idealServers[0];
-    }
-    
-    // If no ideal servers, prefer servers closer to the ideal range (above minIdeal or below maxIdeal)
-    const decentServers = matchingServers.filter(s => 
-      s.playing >= Math.floor(minIdealPlayers * 0.7) && s.playing <= maxServerSize
-    );
-    
-    if (decentServers.length > 0) {
-      // Sort by how close they are to the ideal range
-      decentServers.sort((a, b) => {
-        const aDist = Math.min(
-          Math.abs(a.playing - minIdealPlayers),
-          Math.abs(a.playing - maxIdealPlayers)
-        );
-        const bDist = Math.min(
-          Math.abs(b.playing - minIdealPlayers),
-          Math.abs(b.playing - maxIdealPlayers)
-        );
-        return aDist - bDist;
-      });
-      
-      console.log('[Roblox Region Selector] Selecting decent server with', decentServers[0].playing, 'players');
-      return decentServers[0];
-    }
-    
-    // Last resort: return any matching server
-    console.log('[Roblox Region Selector] Selecting any available server');
-    return matchingServers[0];
-  }
-
-  async function fetchAllServers(placeId) {
-    const allServers = [];
-    let cursor = '';
-    const maxPages = 5; // Fetch up to 500 servers (5 pages x 100)
-    
-    for (let page = 0; page < maxPages; page++) {
-      try {
-        const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100${cursor ? '&cursor=' + cursor : ''}`;
-        const response = await fetch(url);
-        
-        if (!response.ok) {
-          console.error('[Roblox Region Selector] Failed to fetch servers:', response.status);
-          break;
-        }
-        
-        const data = await response.json();
-        
-        if (!data.data || data.data.length === 0) {
-          break;
-        }
-        
-        allServers.push(...data.data);
-        
-        // Move to next page if available
-        if (data.nextPageCursor) {
-          cursor = data.nextPageCursor;
-        } else {
-          break;
-        }
-      } catch (error) {
-        console.error('[Roblox Region Selector] Error fetching servers:', error);
-        break;
-      }
-    }
-    
-    return allServers;
-  }
-
-  async function getServerRegion(placeId, serverId) {
-    try {
-      const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage({
-          action: 'getServerDetails',
-          placeId: placeId,
-          serverId: serverId
-        }, (response) => {
-          resolve(response);
-        });
-      });
-      
-      if (response && response.success && response.region) {
-        return response.region;
-      }
-      
-      return 'unknown';
-    } catch (error) {
-      console.error('[Roblox Region Selector] Error getting server region:', error);
-      return 'unknown';
-    }
-  }
-
-  function showSearchingPopup() {
-    // Remove any existing popup
-    closeSearchingPopup();
-    
-    const popup = document.createElement('div');
-    popup.id = 'roblox-region-selector-popup';
-    popup.style.cssText = `
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-      color: white;
-      padding: 30px 40px;
-      border-radius: 16px;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      font-size: 16px;
-      z-index: 999999;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-      min-width: 350px;
-      text-align: center;
-      border: 2px solid #3a3a3a;
-    `;
-    
-    popup.innerHTML = `
-      <div style="margin-bottom: 15px;">
-        <div class="spinner" style="
-          border: 3px solid #3a3a3a;
-          border-top: 3px solid #0078d4;
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: spin 1s linear infinite;
-          margin: 0 auto;
-        "></div>
-      </div>
-      <div id="roblox-region-selector-message" style="
-        font-weight: 500;
-        color: #e0e0e0;
-      ">Searching for server in ${getRegionName(currentRegion)}...</div>
-    `;
-    
-    // Add spinner animation
-    const style = document.createElement('style');
-    style.textContent = `
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-    `;
-    popup.appendChild(style);
-    
-    document.body.appendChild(popup);
-  }
-
-  function updateSearchingPopup(message, isError) {
-    const popup = document.getElementById('roblox-region-selector-popup');
-    if (popup) {
-      const messageEl = document.getElementById('roblox-region-selector-message');
-      const spinner = popup.querySelector('.spinner');
-      
-      if (messageEl) {
-        messageEl.textContent = message;
-        if (isError) {
-          messageEl.style.color = '#ff6b6b';
-        }
-      }
-      
-      if (spinner && isError) {
-        spinner.style.display = 'none';
-      }
-    }
-  }
-
-  function closeSearchingPopup() {
-    const popup = document.getElementById('roblox-region-selector-popup');
-    if (popup && popup.parentNode) {
-      popup.parentNode.removeChild(popup);
-    }
-  }
-
-  function getRegionName(regionCode) {
-    const regionNames = {
-      'auto': 'Auto',
-      'seattle': 'Seattle, WA',
-      'losangeles': 'Los Angeles, CA',
-      'dallas': 'Dallas, TX',
-      'chicago': 'Chicago, IL',
-      'atlanta': 'Atlanta, GA',
-      'miami': 'Miami, FL',
-      'ashburn': 'Ashburn, VA',
-      'newyork': 'New York City, NY',
-      'london': 'London, UK',
-      'amsterdam': 'Amsterdam, NL',
-      'paris': 'Paris, FR',
-      'frankfurt': 'Frankfurt, DE',
-      'warsaw': 'Warsaw, PL',
-      'mumbai': 'Mumbai, IN',
-      'tokyo': 'Tokyo, JP',
-      'singapore': 'Singapore',
-      'sydney': 'Sydney, AU'
-    };
-    return regionNames[regionCode] || regionCode;
   }
 
 })();
