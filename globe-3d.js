@@ -97,11 +97,11 @@ class Globe3D {
   }
 
   latLonToXYZ(lat, lon, radius) {
-    const phi = (90 - lat) * Math.PI / 180;
-    const theta = (lon + 180) * Math.PI / 180;
+    const phi = (90 - lat) * Math.PI / 180;  // Angle from north pole
+    const theta = lon * Math.PI / 180;  // Longitude in radians
 
     return {
-      x: -(radius * Math.sin(phi) * Math.cos(theta)),
+      x: radius * Math.sin(phi) * Math.cos(theta),
       y: radius * Math.cos(phi),
       z: radius * Math.sin(phi) * Math.sin(theta)
     };
@@ -143,7 +143,7 @@ class Globe3D {
 
       if (projected.visible) {
         const dist = Math.hypot(x - projected.x, y - projected.y);
-        if (dist < 15) {
+        if (dist < 20) {  // Increased click radius
           if (this.onMarkerClick) {
             this.onMarkerClick(marker.data);
           }
@@ -216,14 +216,18 @@ class Globe3D {
     const cosRotY = Math.cos(rotY);
     const sinRotY = Math.sin(rotY);
 
-    // Create off-screen canvas for texture sampling
-    const texCanvas = document.createElement('canvas');
-    texCanvas.width = this.texture.width;
-    texCanvas.height = this.texture.height;
-    const texCtx = texCanvas.getContext('2d');
-    texCtx.drawImage(this.texture, 0, 0);
-    const texData = texCtx.getImageData(0, 0, this.texture.width, this.texture.height).data;
+    // Create off-screen canvas for texture sampling (cache it if possible)
+    if (!this.texCanvas) {
+      this.texCanvas = document.createElement('canvas');
+      this.texCanvas.width = this.texture.width;
+      this.texCanvas.height = this.texture.height;
+      const texCtx = this.texCanvas.getContext('2d', { willReadFrequently: true });
+      texCtx.drawImage(this.texture, 0, 0);
+      this.texData = texCtx.getImageData(0, 0, this.texture.width, this.texture.height).data;
+    }
+    const texData = this.texData;
 
+    // Sample every pixel for quality
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const dx = x - centerX;
@@ -245,13 +249,13 @@ class Globe3D {
 
           // Only render front hemisphere
           if (nz2 > 0) {
-            // Convert to lat/lon
-            const lat = Math.asin(-ny2);
-            const lon = Math.atan2(nx1, nz2);
+            // Convert to spherical coordinates
+            const phi = Math.acos(Math.max(-1, Math.min(1, ny2)));  // Angle from north pole [0, π]
+            const theta = Math.atan2(nz2, nx1);  // Longitude [-π, π]
 
             // Map to texture coordinates (equirectangular)
-            const u = (lon / Math.PI + 1) * 0.5;
-            const v = (lat / Math.PI + 0.5);
+            const u = (theta + Math.PI) / (2 * Math.PI);  // Map [-π, π] to [0, 1]
+            const v = phi / Math.PI;  // Map [0, π] to [0, 1]
 
             const tx = Math.floor(u * (this.texture.width - 1));
             const ty = Math.floor(v * (this.texture.height - 1));
@@ -335,22 +339,22 @@ class Globe3D {
       if (projected.visible) {
         const hasServers = marker.data && marker.data.count > 0;
 
-        // Draw glow
+        // Draw glow (larger)
         const gradient = ctx.createRadialGradient(
           projected.x, projected.y, 0,
-          projected.x, projected.y, 12
+          projected.x, projected.y, 18
         );
         gradient.addColorStop(0, hasServers ? 'rgba(65, 129, 250, 0.8)' : 'rgba(150, 150, 150, 0.5)');
         gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
         ctx.beginPath();
-        ctx.arc(projected.x, projected.y, 12, 0, Math.PI * 2);
+        ctx.arc(projected.x, projected.y, 18, 0, Math.PI * 2);
         ctx.fillStyle = gradient;
         ctx.fill();
 
-        // Draw dot
+        // Draw dot (larger)
         ctx.beginPath();
-        ctx.arc(projected.x, projected.y, 5, 0, Math.PI * 2);
+        ctx.arc(projected.x, projected.y, 8, 0, Math.PI * 2);
         ctx.fillStyle = hasServers ? '#4181FA' : '#888';
         ctx.fill();
 
