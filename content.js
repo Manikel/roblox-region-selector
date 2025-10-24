@@ -8,7 +8,8 @@
   let allServers = [];
   let regionServerCounts = {};
   let currentSelectedRegion = null;
-  let threeJsLoaded = false;
+  let globeRendererReady = false;
+  let globeReady = false;
 
   // Region coordinates on globe (latitude, longitude)
   const REGION_COORDS = {
@@ -34,27 +35,48 @@
   // World map texture URL
   const WORLD_MAP_URL = chrome.runtime.getURL('icons/world-map.png');
 
-  // Load THREE.js dynamically
-  function loadThreeJs() {
+  // Inject globe renderer script into page context
+  function injectGlobeRenderer() {
     return new Promise((resolve, reject) => {
-      if (window.THREE) {
-        threeJsLoaded = true;
+      if (globeRendererReady) {
         resolve();
         return;
       }
 
+      // Listen for globe renderer ready message
+      const messageHandler = (event) => {
+        if (event.origin !== window.location.origin) return;
+
+        if (event.data && event.data.type === 'GLOBE_RENDERER_READY') {
+          globeRendererReady = true;
+          window.removeEventListener('message', messageHandler);
+          console.log('[RRS] Globe renderer loaded successfully');
+          resolve();
+        }
+      };
+
+      window.addEventListener('message', messageHandler);
+
+      // Inject globe renderer script
       const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+      script.src = chrome.runtime.getURL('globe-renderer.js');
       script.onload = () => {
-        threeJsLoaded = true;
-        console.log('[RRS] THREE.js loaded successfully');
-        resolve();
+        console.log('[RRS] Globe renderer script injected');
       };
       script.onerror = () => {
-        console.error('[RRS] Failed to load THREE.js');
-        reject(new Error('Failed to load THREE.js'));
+        window.removeEventListener('message', messageHandler);
+        console.error('[RRS] Failed to inject globe renderer');
+        reject(new Error('Failed to inject globe renderer'));
       };
-      document.head.appendChild(script);
+      (document.head || document.documentElement).appendChild(script);
+
+      // Timeout after 10 seconds
+      setTimeout(() => {
+        if (!globeRendererReady) {
+          window.removeEventListener('message', messageHandler);
+          reject(new Error('Globe renderer load timeout'));
+        }
+      }, 10000);
     });
   }
 
@@ -173,11 +195,11 @@
   async function openGlobeOverlay() {
     if (document.getElementById('rrs-globe-overlay')) return;
 
-    // Load THREE.js first
+    // Load globe renderer first
     try {
-      await loadThreeJs();
+      await injectGlobeRenderer();
     } catch (error) {
-      console.error('[RRS] Failed to load THREE.js:', error);
+      console.error('[RRS] Failed to load globe renderer:', error);
       alert('Failed to load 3D library. Please refresh the page and try again.');
       return;
     }
@@ -611,187 +633,54 @@
     miniSpinner.classList.add('hidden');
   }
 
-  // Render THREE.js globe with proper texture mapping
+  // Initialize globe via globe-renderer.js
   function renderThreeJsGlobe() {
-    const container = document.getElementById('rrs-globe');
-    const width = 600;
-    const height = 600;
+    // Send message to globe renderer to initialize
+    window.postMessage({ type: 'INIT_GLOBE' }, window.location.origin);
 
-    // Setup scene
-    const scene = new THREE.Scene();
+    // Wait for globe to be ready
+    const globeReadyPromise = new Promise((resolve, reject) => {
+      const messageHandler = (event) => {
+        if (event.origin !== window.location.origin) return;
 
-    // Setup camera
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.z = 2.5;
-
-    // Setup renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(width, height);
-    renderer.setClearColor(0x000000, 0);
-    container.appendChild(renderer.domElement);
-
-    // Create globe sphere
-    const geometry = new THREE.SphereGeometry(1, 64, 64);
-
-    // Load texture
-    const textureLoader = new THREE.TextureLoader();
-    const texture = textureLoader.load(WORLD_MAP_URL);
-
-    // Create material with texture
-    const material = new THREE.MeshPhongMaterial({
-      map: texture,
-      shininess: 5,
-      transparent: false
-    });
-
-    const globe = new THREE.Mesh(geometry, material);
-    scene.add(globe);
-
-    // Add lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-    directionalLight.position.set(5, 3, 5);
-    scene.add(directionalLight);
-
-    // Create dots for regions
-    const dotGeometry = new THREE.SphereGeometry(0.015, 16, 16);
-    const activeMaterial = new THREE.MeshBasicMaterial({ color: 0x4181FA });
-    const inactiveMaterial = new THREE.MeshBasicMaterial({ color: 0x666666 });
-
-    const regionDots = {};
-
-    Object.entries(REGION_COORDS).forEach(([code, data]) => {
-      const lat = data.lat * (Math.PI / 180);
-      const lon = data.lon * (Math.PI / 180);
-
-      // Convert lat/lon to 3D position on sphere
-      const x = Math.cos(lat) * Math.sin(lon);
-      const y = Math.sin(lat);
-      const z = Math.cos(lat) * Math.cos(lon);
-
-      const dot = new THREE.Mesh(dotGeometry, inactiveMaterial.clone());
-      dot.position.set(x * 1.01, y * 1.01, z * 1.01);
-      dot.userData = { code, data };
-      scene.add(dot);
-
-      regionDots[code] = dot;
-    });
-
-    // Rotation controls
-    let isDragging = false;
-    let previousMousePosition = { x: 0, y: 0 };
-
-    renderer.domElement.addEventListener('mousedown', (e) => {
-      isDragging = true;
-      previousMousePosition = { x: e.clientX, y: e.clientY };
-    });
-
-    renderer.domElement.addEventListener('mousemove', (e) => {
-      if (isDragging) {
-        const deltaX = e.clientX - previousMousePosition.x;
-        const deltaY = e.clientY - previousMousePosition.y;
-
-        globe.rotation.y += deltaX * 0.005;
-        globe.rotation.x += deltaY * 0.005;
-
-        // Also rotate dots with globe
-        Object.values(regionDots).forEach(dot => {
-          dot.rotation.y = globe.rotation.y;
-          dot.rotation.x = globe.rotation.x;
-        });
-
-        previousMousePosition = { x: e.clientX, y: e.clientY };
-      }
-
-      // Raycasting for hover
-      const rect = renderer.domElement.getBoundingClientRect();
-      const mouse = new THREE.Vector2(
-        ((e.clientX - rect.left) / width) * 2 - 1,
-        -((e.clientY - rect.top) / height) * 2 + 1
-      );
-
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(mouse, camera);
-
-      const intersects = raycaster.intersectObjects(Object.values(regionDots));
-      const tooltip = document.getElementById('rrs-tooltip');
-
-      if (intersects.length > 0) {
-        const dot = intersects[0].object;
-        const { code, data } = dot.userData;
-        const serverCount = regionServerCounts[code] || 0;
-
-        tooltip.textContent = `${data.name}: ${serverCount} server${serverCount !== 1 ? 's' : ''}`;
-        tooltip.style.left = e.pageX + 10 + 'px';
-        tooltip.style.top = e.pageY + 10 + 'px';
-        tooltip.classList.add('visible');
-        renderer.domElement.style.cursor = 'pointer';
-      } else {
-        tooltip.classList.remove('visible');
-        renderer.domElement.style.cursor = isDragging ? 'grabbing' : 'grab';
-      }
-    });
-
-    renderer.domElement.addEventListener('mouseup', () => {
-      isDragging = false;
-    });
-
-    renderer.domElement.addEventListener('mouseleave', () => {
-      isDragging = false;
-      document.getElementById('rrs-tooltip').classList.remove('visible');
-    });
-
-    // Click handler
-    renderer.domElement.addEventListener('click', (e) => {
-      if (isDragging) return;
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      const mouse = new THREE.Vector2(
-        ((e.clientX - rect.left) / width) * 2 - 1,
-        -((e.clientY - rect.top) / height) * 2 + 1
-      );
-
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(mouse, camera);
-
-      const intersects = raycaster.intersectObjects(Object.values(regionDots));
-
-      if (intersects.length > 0) {
-        const dot = intersects[0].object;
-        const { code } = dot.userData;
-        const serverCount = regionServerCounts[code] || 0;
-
-        if (serverCount > 0) {
-          showServerList(code);
+        if (event.data && event.data.type === 'GLOBE_READY') {
+          globeReady = true;
+          window.removeEventListener('message', messageHandler);
+          console.log('[RRS] Globe initialized successfully');
+          resolve();
         }
-      }
-    });
+        else if (event.data && event.data.type === 'GLOBE_ERROR') {
+          window.removeEventListener('message', messageHandler);
+          console.error('[RRS] Globe initialization error:', event.data.error);
+          reject(new Error(event.data.error));
+        }
+      };
 
-    // Animation loop
-    function animate() {
-      requestAnimationFrame(animate);
-      renderer.render(scene, camera);
-    }
-    animate();
+      window.addEventListener('message', messageHandler);
+
+      // Timeout after 15 seconds
+      setTimeout(() => {
+        if (!globeReady) {
+          window.removeEventListener('message', messageHandler);
+          reject(new Error('Globe initialization timeout'));
+        }
+      }, 15000);
+    });
 
     // Return API
     return {
+      ready: globeReadyPromise,
       updateDots: function() {
-        Object.entries(regionDots).forEach(([code, dot]) => {
-          const serverCount = regionServerCounts[code] || 0;
-          dot.material = serverCount > 0 ? activeMaterial : inactiveMaterial;
-        });
+        // Send updated region data to globe renderer
+        window.postMessage({
+          type: 'UPDATE_REGIONS',
+          regions: regionServerCounts
+        }, window.location.origin);
       },
       cleanup: function() {
-        // Clean up THREE.js resources
-        geometry.dispose();
-        material.dispose();
-        renderer.dispose();
-        if (container.contains(renderer.domElement)) {
-          container.removeChild(renderer.domElement);
-        }
+        // Send cleanup message to globe renderer
+        window.postMessage({ type: 'CLEANUP_GLOBE' }, window.location.origin);
+        globeReady = false;
       }
     };
   }
@@ -1080,6 +969,25 @@
     }
     return 'unknown';
   }
+
+  // Listen for messages from globe renderer
+  window.addEventListener('message', function(event) {
+    if (event.origin !== window.location.origin) return;
+
+    const data = event.data;
+
+    // Handle region click from globe renderer
+    if (data && data.type === 'REGION_CLICKED') {
+      const regionCode = data.regionCode;
+      const serverCount = regionServerCounts[regionCode] || 0;
+
+      console.log('[RRS] Region clicked:', regionCode, 'Servers:', serverCount);
+
+      if (serverCount > 0) {
+        showServerList(regionCode);
+      }
+    }
+  });
 
   // Inject the injector script
   function injectScript() {
