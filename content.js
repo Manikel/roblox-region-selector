@@ -632,473 +632,74 @@
 
   //
   // Render 3D globe with optimized Canvas rendering
-  function renderGlobe() {
-    const globe = document.getElementById('rrs-globe');
-    const displaySize = 600;
-    const renderSize = 400; // Reduced internal resolution for performance
-    const centerX = renderSize / 2;
-    const centerY = renderSize / 2;
-    const radius = renderSize * 0.42; // Slightly smaller for better fit
+  // Professional globe renderer using Globe3D
+  let globeInstance = null;
 
-    let rotationX = -40; // Start showing Americas (negative = rotate west)
-    let rotationY = 0;
-    let isDragging = false;
-    let lastMouseX = 0;
-    let lastMouseY = 0;
-    let animationId = null;
+  async function renderGlobe() {
+    // Inject Globe3D library if not already loaded
+    if (!window.Globe3D) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = chrome.runtime.getURL('globe-3d.js');
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
 
-    // Create canvas for globe rendering
-    const canvas = document.createElement('canvas');
-    canvas.width = renderSize;
-    canvas.height = renderSize;
-    canvas.style.width = displaySize + 'px';
-    canvas.style.height = displaySize + 'px';
-    canvas.style.cursor = 'grab';
-    globe.innerHTML = '';
-    globe.appendChild(canvas);
+    // Create globe instance
+    globeInstance = new window.Globe3D('rrs-globe', {
+      width: 600,
+      height: 600,
+      radius: 250
+    });
 
-    const ctx = canvas.getContext('2d', { alpha: true });
+    // Load texture
+    await globeInstance.loadTexture(WORLD_MAP_URL);
 
-    // Load world map texture
-    const mapImage = new Image();
-    mapImage.crossOrigin = 'anonymous';
-    mapImage.src = WORLD_MAP_URL;
+    // Add markers for all regions
+    Object.entries(REGION_COORDS).forEach(([code, data]) => {
+      globeInstance.addMarker(data.lat, data.lon, {
+        code: code,
+        name: data.name,
+        count: regionServerCounts[code] || 0
+      });
+    });
 
-    // Pre-create texture data canvas
-    let mapData = null;
-    let mapCanvas = null;
-
-    mapImage.onload = function() {
-      mapCanvas = document.createElement('canvas');
-      mapCanvas.width = mapImage.width;
-      mapCanvas.height = mapImage.height;
-      const mapCtx = mapCanvas.getContext('2d');
-      mapCtx.drawImage(mapImage, 0, 0);
-      mapData = mapCtx.getImageData(0, 0, mapImage.width, mapImage.height).data;
-      render();
+    // Handle marker clicks
+    globeInstance.onMarkerClick = (markerData) => {
+      if (markerData.count > 0) {
+        showServerList(markerData.code);
+      }
     };
 
-    function render() {
-      // Clear canvas
-      ctx.clearRect(0, 0, renderSize, renderSize);
+    // Start rendering
+    globeInstance.start();
 
-      // Draw background sphere
-      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-      gradient.addColorStop(0, 'rgba(40, 50, 70, 1)');
-      gradient.addColorStop(1, 'rgba(20, 25, 35, 1)');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Draw textured globe
-      if (mapData) {
-        const imageData = ctx.createImageData(renderSize, renderSize);
-        const data = imageData.data;
-
-        const rotXRad = rotationX * Math.PI / 180;
-        const rotYRad = rotationY * Math.PI / 180;
-
-        // Precompute rotation matrices
-        const cosRotX = Math.cos(rotXRad);
-        const sinRotX = Math.sin(rotXRad);
-        const cosRotY = Math.cos(rotYRad);
-        const sinRotY = Math.sin(rotYRad);
-
-        // For each pixel
-        for (let y = 0; y < renderSize; y++) {
-          for (let x = 0; x < renderSize; x++) {
-            const dx = x - centerX;
-            const dy = y - centerY;
-            const distSq = dx * dx + dy * dy;
-
-            // Check if within sphere
-            if (distSq <= radius * radius) {
-              // Calculate z coordinate (depth into screen)
-              const dz = Math.sqrt(radius * radius - distSq);
-
-              // Initial 3D point on sphere (normalized)
-              let nx = dx / radius;
-              let ny = dy / radius;
-              let nz = dz / radius;
-
-              // Apply Y-axis rotation (horizontal spin)
-              const nx_rotated = nx * cosRotX + nz * sinRotX;
-              const nz_rotated = -nx * sinRotX + nz * cosRotX;
-              nx = nx_rotated;
-              nz = nz_rotated;
-
-              // Apply X-axis rotation (vertical tilt)
-              const ny_rotated = ny * cosRotY - nz * sinRotY;
-              const nz_final = ny * sinRotY + nz * cosRotY;
-              ny = ny_rotated;
-              nz = nz_final;
-
-              // Only draw front hemisphere (z > 0 means facing viewer)
-              // Add small epsilon to avoid edge artifacts
-              if (nz_final > 0.05) {
-                // Standard equirectangular UV mapping
-                // u = atan2(x, z) / (2*PI) + 0.5
-                // v = asin(-y) / PI + 0.5
-                const u = Math.atan2(nx, nz_final) / (2 * Math.PI) + 0.5;
-                const v = Math.asin(-ny) / Math.PI + 0.5;
-
-                // Sample texture
-                const tx = Math.floor(u * (mapImage.width - 1));
-                const ty = Math.floor(v * (mapImage.height - 1));
-                const mapIdx = (ty * mapImage.width + tx) * 4;
-
-                // Calculate lighting based on surface normal (brighter in front)
-                const brightness = Math.max(0.4, nz_final);
-
-                // Write pixel with brightness adjustment
-                const idx = (y * renderSize + x) * 4;
-                data[idx] = Math.floor(mapData[mapIdx] * brightness);
-                data[idx + 1] = Math.floor(mapData[mapIdx + 1] * brightness);
-                data[idx + 2] = Math.floor(mapData[mapIdx + 2] * brightness);
-                data[idx + 3] = 255; // Full opacity
-              }
-            }
-          }
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-      }
-
-      // Draw grid lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-      ctx.lineWidth = 1;
-
-      // Draw latitude lines
-      for (let lat = -60; lat <= 60; lat += 30) {
-        ctx.beginPath();
-        let firstPoint = true;
-        for (let lon = -180; lon <= 180; lon += 5) {
-          const point = projectPointToScreen(lat, lon);
-          if (point.visible) {
-            if (firstPoint) {
-              ctx.moveTo(point.x, point.y);
-              firstPoint = false;
-            } else {
-              ctx.lineTo(point.x, point.y);
-            }
-          }
-        }
-        ctx.stroke();
-      }
-
-      // Draw longitude lines
-      for (let lon = -180; lon < 180; lon += 30) {
-        ctx.beginPath();
-        let firstPoint = true;
-        for (let lat = -90; lat <= 90; lat += 5) {
-          const point = projectPointToScreen(lat, lon);
-          if (point.visible) {
-            if (firstPoint) {
-              ctx.moveTo(point.x, point.y);
-              firstPoint = false;
-            } else {
-              ctx.lineTo(point.x, point.y);
-            }
-          }
-        }
-        ctx.stroke();
-      }
-
-      // Draw outline
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Draw region dots
-      const regions = Object.entries(REGION_COORDS).map(([code, data]) => {
-        const point = projectPointToScreen(data.lat, data.lon);
-        const serverCount = regionServerCounts[code] || 0;
-        const isActive = serverCount > 0;
-
-        return {
-          code,
-          data,
-          point,
-          serverCount,
-          isActive
-        };
-      }).filter(r => r.point.visible)
-        .sort((a, b) => a.point.z - b.point.z);
-
-      regions.forEach(region => {
-        const dotSize = 8 * region.point.scale;
-        ctx.fillStyle = region.isActive ? '#4181FA' : '#666';
-
-        if (region.isActive) {
-          ctx.shadowColor = 'rgba(65, 129, 250, 0.8)';
-          ctx.shadowBlur = 8;
-        }
-
-        ctx.beginPath();
-        ctx.arc(region.point.x, region.point.y, dotSize, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.shadowBlur = 0;
-      });
-
-      // Store region positions for click detection
-      canvas.regionPositions = regions;
-    }
-
-    function projectPointToScreen(lat, lon) {
-      // Convert lat/lon to normalized 3D coordinates (matching texture mapping)
-      const latRad = lat * (Math.PI / 180);
-      const lonRad = lon * (Math.PI / 180);
-
-      // Standard spherical to Cartesian conversion
-      let nx = Math.cos(latRad) * Math.sin(lonRad);
-      let ny = Math.sin(latRad);
-      let nz = Math.cos(latRad) * Math.cos(lonRad);
-
-      // Apply Y-axis rotation (horizontal spin) - matching texture rotation
-      const rotXRad = rotationX * (Math.PI / 180);
-      const cosRotX = Math.cos(rotXRad);
-      const sinRotX = Math.sin(rotXRad);
-      const nx_rotated = nx * cosRotX + nz * sinRotX;
-      const nz_rotated = -nx * sinRotX + nz * cosRotX;
-      nx = nx_rotated;
-      nz = nz_rotated;
-
-      // Apply X-axis rotation (vertical tilt) - matching texture rotation
-      const rotYRad = rotationY * (Math.PI / 180);
-      const cosRotY = Math.cos(rotYRad);
-      const sinRotY = Math.sin(rotYRad);
-      const ny_rotated = ny * cosRotY - nz * sinRotY;
-      const nz_final = ny * sinRotY + nz * cosRotY;
-      ny = ny_rotated;
-      nz = nz_final;
-
-      // Scale back to radius
-      const x = nx * radius;
-      const y = ny * radius;
-      const z = nz;
-
-      const perspective = 600;
-      const scale = perspective / (perspective + z * radius);
-
-      return {
-        x: centerX + x * scale,
-        y: centerY + y * scale,
-        visible: nz > 0,
-        scale: scale,
-        z: z * radius
-      };
-    }
-
-    // Mouse events for dragging (optimized with RAF)
-    let renderScheduled = false;
-    function scheduleRender() {
-      if (!renderScheduled) {
-        renderScheduled = true;
-        requestAnimationFrame(() => {
-          render();
-          renderScheduled = false;
-        });
-      }
-    }
-
-    // Scale factor for mouse coordinates (display size / render size)
-    const coordScale = renderSize / displaySize;
-
-    canvas.addEventListener('mousedown', (e) => {
-      isDragging = true;
-      lastMouseX = e.clientX;
-      lastMouseY = e.clientY;
-      canvas.style.cursor = 'grabbing';
-      e.preventDefault();
-    });
-
-    canvas.addEventListener('mousemove', (e) => {
-      if (isDragging) {
-        const deltaX = e.clientX - lastMouseX;
-        const deltaY = e.clientY - lastMouseY;
-
-        rotationX += deltaX * 0.5;
-        rotationY = Math.max(-45, Math.min(45, rotationY + deltaY * 0.3));
-
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
-
-        scheduleRender();
-      } else {
-        // Check hover on dots
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) * coordScale;
-        const mouseY = (e.clientY - rect.top) * coordScale;
-
-        if (canvas.regionPositions) {
-          const tooltip = document.getElementById('rrs-tooltip');
-          let hovering = false;
-
-          for (const region of canvas.regionPositions) {
-            const dist = Math.sqrt(
-              Math.pow(mouseX - region.point.x, 2) +
-              Math.pow(mouseY - region.point.y, 2)
-            );
-            const dotSize = 8 * region.point.scale;
-
-            if (dist <= dotSize) {
-              tooltip.textContent = `${region.data.name}: ${region.serverCount} server${region.serverCount !== 1 ? 's' : ''}`;
-              tooltip.style.left = e.pageX + 10 + 'px';
-              tooltip.style.top = e.pageY + 10 + 'px';
-              tooltip.classList.add('visible');
-              canvas.style.cursor = 'pointer';
-              hovering = true;
-              break;
-            }
-          }
-
-          if (!hovering) {
-            tooltip.classList.remove('visible');
-            canvas.style.cursor = 'grab';
-          }
-        }
-      }
-    });
-
-    canvas.addEventListener('mouseup', () => {
-      isDragging = false;
-      canvas.style.cursor = 'grab';
-    });
-
-    canvas.addEventListener('mouseleave', () => {
-      isDragging = false;
-      canvas.style.cursor = 'grab';
-      const tooltip = document.getElementById('rrs-tooltip');
-      tooltip.classList.remove('visible');
-    });
-
-    canvas.addEventListener('click', (e) => {
-      if (!isDragging) {
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) * coordScale;
-        const mouseY = (e.clientY - rect.top) * coordScale;
-
-        if (canvas.regionPositions) {
-          for (const region of canvas.regionPositions) {
-            const dist = Math.sqrt(
-              Math.pow(mouseX - region.point.x, 2) +
-              Math.pow(mouseY - region.point.y, 2)
-            );
-            const dotSize = 8 * region.point.scale;
-
-            if (dist <= dotSize && region.serverCount > 0) {
-              showServerList(region.code);
-              break;
-            }
-          }
-        }
-      }
-    });
-
-    // Return API for external updates
+    // Return API matching old implementation
     return {
-      updateDots: function() {
-        // Trigger re-render to update dots
-        scheduleRender();
+      updateDots: () => {
+        // Update marker data when server counts change
+        if (globeInstance) {
+          globeInstance.markers = [];
+          Object.entries(REGION_COORDS).forEach(([code, data]) => {
+            globeInstance.addMarker(data.lat, data.lon, {
+              code: code,
+              name: data.name,
+              count: regionServerCounts[code] || 0
+            });
+          });
+        }
+      },
+      destroy: () => {
+        if (globeInstance) {
+          globeInstance.destroy();
+          globeInstance = null;
+        }
       }
     };
   }
 
-  async function showServerList(regionCode) {
-    // If clicking the same region, do nothing
-    if (currentSelectedRegion === regionCode) {
-      return;
-    }
-
-    const serverList = document.getElementById('rrs-server-list');
-    const globeContainer = document.getElementById('rrs-globe-container');
-
-    // If there's already a region selected, animate out first
-    if (currentSelectedRegion !== null) {
-      // Slide out and fade out current server list
-      serverList.classList.remove('visible');
-      globeContainer.classList.remove('shifted');
-
-      // Wait for animation to complete
-      await new Promise(resolve => setTimeout(resolve, 600));
-    }
-
-    // Update current selection
-    currentSelectedRegion = regionCode;
-
-    const regionData = REGION_COORDS[regionCode];
-    const regionServers = allServers.filter(s => s.region === regionCode);
-
-    // Sort by player count (high to low)
-    regionServers.sort((a, b) => b.playing - a.playing);
-
-    // Build server list HTML
-    const locationName = regionData.state
-      ? `${regionData.name}, ${regionData.state}`
-      : regionData.name;
-
-    let html = `
-      <div class="rrs-region-header">
-        <span class="rrs-region-flag">${regionData.flag}</span>
-        <span>${locationName}</span>
-      </div>
-    `;
-
-    regionServers.forEach(server => {
-      html += `
-        <div class="rrs-server-item">
-          <div class="rrs-server-header">
-            <span class="rrs-player-count">${server.playing}/${server.maxPlayers} players</span>
-          </div>
-          <button class="rrs-join-btn" data-server-id="${server.id}">Join Server</button>
-        </div>
-      `;
-    });
-
-    const serverListElem = document.getElementById('rrs-server-list');
-    serverListElem.innerHTML = html;
-
-    // Shift globe left and show server list with animation
-    setTimeout(() => {
-      globeContainer.classList.add('shifted');
-      serverListElem.classList.add('visible');
-    }, 100);
-
-    // Add join button handlers
-    serverListElem.querySelectorAll('.rrs-join-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const serverId = btn.getAttribute('data-server-id');
-        joinServer(serverId);
-      });
-    });
-  }
-
-  // Join a specific server
-  async function joinServer(serverId) {
-    console.log('[Roblox Region Selector] Joining server:', serverId);
-
-    // Close overlay
-    closeGlobeOverlay();
-
-    // Join via injector
-    window.postMessage({
-      type: 'JOIN_SPECIFIC_SERVER',
-      placeId: currentPlaceId,
-      serverId: serverId
-    }, window.location.origin);
-
-    // Show thank you popup after a short delay
-    setTimeout(() => {
-      showThankYouPopup();
-    }, 1000);
-  }
-
-  // Show thank you popup
   function showThankYouPopup() {
     const popup = document.createElement('div');
     popup.id = 'rrs-thankyou-popup';
