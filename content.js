@@ -498,8 +498,7 @@
 
 
   //
-
- Render 3D globe with Canvas and proper texture mapping
+  // Render 3D globe with Canvas and proper texture mapping
   function renderGlobe() {
     const globe = document.getElementById('rrs-globe');
     const size = 600;
