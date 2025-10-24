@@ -735,11 +735,12 @@
               nz = nz_final;
 
               // Only draw front hemisphere (z > 0 means facing viewer)
-              if (nz > 0) {
+              // Add small epsilon to avoid edge artifacts
+              if (nz_final > 0.05) {
                 // Standard equirectangular UV mapping
                 // u = atan2(x, z) / (2*PI) + 0.5
                 // v = asin(-y) / PI + 0.5
-                const u = Math.atan2(nx, nz) / (2 * Math.PI) + 0.5;
+                const u = Math.atan2(nx, nz_final) / (2 * Math.PI) + 0.5;
                 const v = Math.asin(-ny) / Math.PI + 0.5;
 
                 // Sample texture
@@ -747,12 +748,15 @@
                 const ty = Math.floor(v * (mapImage.height - 1));
                 const mapIdx = (ty * mapImage.width + tx) * 4;
 
-                // Write pixel
+                // Calculate lighting based on surface normal (brighter in front)
+                const brightness = Math.max(0.4, nz_final);
+
+                // Write pixel with brightness adjustment
                 const idx = (y * renderSize + x) * 4;
-                data[idx] = mapData[mapIdx];
-                data[idx + 1] = mapData[mapIdx + 1];
-                data[idx + 2] = mapData[mapIdx + 2];
-                data[idx + 3] = mapData[mapIdx + 3];
+                data[idx] = Math.floor(mapData[mapIdx] * brightness);
+                data[idx + 1] = Math.floor(mapData[mapIdx + 1] * brightness);
+                data[idx + 2] = Math.floor(mapData[mapIdx + 2] * brightness);
+                data[idx + 3] = 255; // Full opacity
               }
             }
           }
