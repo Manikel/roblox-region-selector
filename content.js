@@ -530,8 +530,17 @@
     // Render THREE.js globe
     globeRendererInstance = renderThreeJsGlobe();
 
-    // Start scanning servers in real-time
-    scanServersForRegionsRealtime();
+    // Wait for globe to be ready before scanning
+    globeRendererInstance.ready
+      .then(() => {
+        console.log('[RRS] Globe ready, starting server scan');
+        // Start scanning servers in real-time
+        scanServersForRegionsRealtime();
+      })
+      .catch(error => {
+        console.error('[RRS] Globe initialization failed:', error);
+        alert('Failed to initialize globe. Please refresh the page and try again.');
+      });
   }
 
   function closeGlobeOverlay() {
