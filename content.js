@@ -29,6 +29,22 @@
     'sydney': { lat: -33.8688, lon: 151.2093, name: 'Sydney', country: 'Australia', flag: '🇦🇺' }
   };
 
+  // Simplified continent outlines (major landmasses)
+  const CONTINENTS = [
+    // North America
+    [[49, -125], [50, -100], [48, -90], [45, -75], [40, -74], [35, -80], [30, -95], [25, -100], [20, -105], [30, -115], [35, -120], [40, -125], [49, -125]],
+    // South America
+    [[10, -80], [5, -75], [-5, -75], [-20, -70], [-35, -70], [-45, -70], [-55, -68], [-50, -75], [-30, -80], [-10, -82], [0, -78], [10, -80]],
+    // Europe
+    [[70, -10], [70, 30], [60, 40], [50, 50], [40, 40], [35, 10], [40, -10], [45, -10], [50, 0], [60, -5], [70, -10]],
+    // Africa
+    [[35, 10], [30, 30], [20, 40], [10, 45], [-10, 40], [-30, 30], [-35, 20], [-25, 15], [-10, 10], [0, 10], [10, 0], [20, 0], [35, 10]],
+    // Asia
+    [[70, 40], [70, 100], [70, 140], [60, 150], [50, 140], [40, 130], [30, 120], [20, 110], [10, 100], [0, 100], [10, 80], [20, 70], [30, 60], [40, 50], [50, 50], [60, 40], [70, 40]],
+    // Australia
+    [[-10, 110], [-15, 130], [-25, 140], [-35, 150], [-40, 145], [-35, 135], [-30, 125], [-20, 115], [-10, 110]]
+  ];
+
   // Inject button next to Roblox play button
   function injectRegionButton() {
     const playButtonSelectors = [
@@ -60,10 +76,10 @@
       <img src="${chrome.runtime.getURL('icons/icon48.png')}" style="width: 20px; height: 20px; vertical-align: middle;" />
     `;
 
-    // Style to match Roblox button
+    // Style to match Roblox button with blue color
     const playButtonStyles = window.getComputedStyle(playButton);
     regionButton.style.cssText = `
-      background: #00b06f;
+      background: #4181FA;
       color: white;
       border: none;
       border-radius: 8px;
@@ -81,12 +97,12 @@
     `;
 
     regionButton.addEventListener('mouseenter', () => {
-      regionButton.style.background = '#00a561';
+      regionButton.style.background = '#3366CC';
       regionButton.style.transform = 'scale(1.05)';
     });
 
     regionButton.addEventListener('mouseleave', () => {
-      regionButton.style.background = '#00b06f';
+      regionButton.style.background = '#4181FA';
       regionButton.style.transform = 'scale(1)';
     });
 
@@ -163,11 +179,11 @@
           position: relative;
           width: 600px;
           height: 600px;
-          transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         #rrs-globe-container.shifted {
-          transform: translateX(-250px);
+          transform: translateX(-200px);
         }
 
         #rrs-globe {
@@ -175,6 +191,7 @@
           height: 100%;
           position: relative;
           cursor: grab;
+          user-select: none;
         }
 
         #rrs-globe:active {
@@ -192,7 +209,7 @@
         }
 
         .rrs-region-dot:hover {
-          transform: scale(1.5);
+          r: 12 !important;
         }
 
         .rrs-region-dot.inactive {
@@ -200,8 +217,8 @@
         }
 
         .rrs-region-dot.active {
-          fill: #00b06f;
-          filter: drop-shadow(0 0 8px rgba(0, 176, 111, 0.8));
+          fill: #4181FA;
+          filter: drop-shadow(0 0 8px rgba(65, 129, 250, 0.8));
         }
 
         #rrs-logo {
@@ -246,11 +263,12 @@
           font-size: 18px;
           font-family: 'Segoe UI', sans-serif;
           text-align: center;
+          z-index: 5;
         }
 
         .rrs-spinner {
           border: 3px solid rgba(255, 255, 255, 0.3);
-          border-top: 3px solid #00b06f;
+          border-top: 3px solid #4181FA;
           border-radius: 50%;
           width: 50px;
           height: 50px;
@@ -264,24 +282,27 @@
         }
 
         #rrs-server-list {
-          position: absolute;
-          right: 0;
+          position: fixed;
+          left: 50%;
           top: 50%;
-          transform: translateY(-50%) translateX(100%);
+          transform: translate(calc(-50% + 100px), -50%);
           width: 450px;
           max-height: 80vh;
           background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
           border-radius: 16px;
           padding: 30px;
           opacity: 0;
-          transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+          pointer-events: none;
+          transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
           overflow-y: auto;
           box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          z-index: 1;
         }
 
         #rrs-server-list.visible {
-          transform: translateY(-50%) translateX(0);
+          transform: translate(calc(-50% + 350px), -50%);
           opacity: 1;
+          pointer-events: auto;
         }
 
         .rrs-server-item {
@@ -307,13 +328,13 @@
         }
 
         .rrs-player-count {
-          color: #00b06f;
+          color: #4181FA;
           font-weight: 600;
           font-size: 16px;
         }
 
         .rrs-join-btn {
-          background: #00b06f;
+          background: #4181FA;
           color: white;
           border: none;
           border-radius: 8px;
@@ -327,7 +348,7 @@
         }
 
         .rrs-join-btn:hover {
-          background: #00a561;
+          background: #3366CC;
           transform: scale(1.02);
         }
 
@@ -346,7 +367,7 @@
         }
 
         .rrs-tooltip {
-          position: absolute;
+          position: fixed;
           background: rgba(0, 0, 0, 0.9);
           color: white;
           padding: 8px 12px;
@@ -354,7 +375,7 @@
           font-size: 14px;
           font-family: 'Segoe UI', sans-serif;
           pointer-events: none;
-          z-index: 1000;
+          z-index: 10000;
           opacity: 0;
           transition: opacity 0.2s ease;
         }
@@ -392,8 +413,9 @@
           <div>Scanning servers across regions...</div>
         </div>
         <div id="rrs-globe"></div>
-        <div id="rrs-server-list"></div>
       </div>
+
+      <div id="rrs-server-list"></div>
 
       <div class="rrs-tooltip" id="rrs-tooltip"></div>
     `;
@@ -418,9 +440,9 @@
     const overlay = document.getElementById('rrs-globe-overlay');
     if (overlay) {
       overlay.style.animation = 'rrs-fadeOut 0.3s ease';
-      overlay.addEventListener('animationend', () => {
+      setTimeout(() => {
         overlay.remove();
-      });
+      }, 300);
     }
   }
 
@@ -480,34 +502,65 @@
     const radius = 250;
 
     let rotationX = 0;
-    let rotationY = 15;
+    let rotationY = 0;
     let isDragging = false;
     let lastMouseX = 0;
     let lastMouseY = 0;
 
     function projectPoint(lat, lon) {
+      // Convert to radians
       const phi = (90 - lat) * (Math.PI / 180);
       const theta = (lon + rotationX) * (Math.PI / 180);
 
+      // 3D coordinates
       const x = radius * Math.sin(phi) * Math.cos(theta);
       const y = radius * Math.cos(phi);
       const z = radius * Math.sin(phi) * Math.sin(theta);
 
+      // Apply vertical rotation
+      const rotY = rotationY * (Math.PI / 180);
+      const yRotated = y * Math.cos(rotY) - z * Math.sin(rotY);
+      const zRotated = y * Math.sin(rotY) + z * Math.cos(rotY);
+
       // Perspective projection
-      const scale = 400 / (400 + z);
+      const perspective = 600;
+      const scale = perspective / (perspective + zRotated);
+
       return {
         x: centerX + x * scale,
-        y: centerY + y * scale,
-        visible: z > -radius * 0.3,
-        scale: scale
+        y: centerY + yRotated * scale,
+        visible: zRotated > -radius * 0.3,
+        scale: scale,
+        z: zRotated
       };
     }
 
     function render() {
       let svg = `<svg id="rrs-globe-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">`;
 
-      // Draw globe outline
-      svg += `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="rgba(30, 30, 30, 0.5)" stroke="rgba(255, 255, 255, 0.1)" stroke-width="2"/>`;
+      // Draw globe background
+      svg += `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="rgba(20, 25, 35, 0.9)" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2"/>`;
+
+      // Draw continents
+      CONTINENTS.forEach(continent => {
+        let pathData = '';
+        let allVisible = true;
+        const points = [];
+
+        continent.forEach(([lat, lon]) => {
+          const point = projectPoint(lat, lon);
+          points.push(point);
+          if (!point.visible) allVisible = false;
+        });
+
+        if (allVisible) {
+          points.forEach((point, i) => {
+            pathData += (i === 0 ? 'M' : 'L') + `${point.x},${point.y} `;
+          });
+          pathData += 'Z';
+          svg += `<path d="${pathData}" fill="rgba(100, 120, 140, 0.3)" stroke="rgba(150, 170, 190, 0.4)" stroke-width="1"/>`;
+        }
+      });
 
       // Draw latitude lines
       for (let lat = -60; lat <= 60; lat += 30) {
@@ -519,7 +572,7 @@
           }
         }
         if (pathData) {
-          svg += `<path d="${pathData}" stroke="rgba(255, 255, 255, 0.05)" fill="none" stroke-width="1"/>`;
+          svg += `<path d="${pathData}" stroke="rgba(255, 255, 255, 0.08)" fill="none" stroke-width="1"/>`;
         }
       }
 
@@ -533,11 +586,11 @@
           }
         }
         if (pathData) {
-          svg += `<path d="${pathData}" stroke="rgba(255, 255, 255, 0.05)" fill="none" stroke-width="1"/>`;
+          svg += `<path d="${pathData}" stroke="rgba(255, 255, 255, 0.08)" fill="none" stroke-width="1"/>`;
         }
       }
 
-      // Draw region dots
+      // Draw region dots (sorted by z-depth for proper layering)
       const regions = Object.entries(REGION_COORDS).map(([code, data]) => {
         const point = projectPoint(data.lat, data.lon);
         const serverCount = regionServerCounts[code] || 0;
@@ -548,23 +601,21 @@
           data,
           point,
           serverCount,
-          isActive,
-          z: point.visible ? projectPoint(data.lat, data.lon + rotationX).scale : -1
+          isActive
         };
-      }).sort((a, b) => a.z - b.z); // Back to front
+      }).filter(r => r.point.visible)
+        .sort((a, b) => a.point.z - b.point.z); // Back to front
 
       regions.forEach(region => {
-        if (region.point.visible) {
-          const dotSize = 8 * region.point.scale;
-          svg += `<circle
-            class="rrs-region-dot ${region.isActive ? 'active' : 'inactive'}"
-            cx="${region.point.x}"
-            cy="${region.point.y}"
-            r="${dotSize}"
-            data-region="${region.code}"
-            data-count="${region.serverCount}"
-          />`;
-        }
+        const dotSize = 8 * region.point.scale;
+        svg += `<circle
+          class="rrs-region-dot ${region.isActive ? 'active' : 'inactive'}"
+          cx="${region.point.x}"
+          cy="${region.point.y}"
+          r="${dotSize}"
+          data-region="${region.code}"
+          data-count="${region.serverCount}"
+        />`;
       });
 
       svg += '</svg>';
@@ -573,22 +624,30 @@
       // Add event listeners to dots
       document.querySelectorAll('.rrs-region-dot').forEach(dot => {
         const regionCode = dot.getAttribute('data-region');
-        const count = dot.getAttribute('data-count');
-        const tooltip = document.getElementById('rrs-tooltip');
+        const count = parseInt(dot.getAttribute('data-count'));
 
         dot.addEventListener('mouseenter', (e) => {
           const regionData = REGION_COORDS[regionCode];
-          tooltip.textContent = `${regionData.name}: ${count} server${count !== '1' ? 's' : ''}`;
+          const tooltip = document.getElementById('rrs-tooltip');
+          tooltip.textContent = `${regionData.name}: ${count} server${count !== 1 ? 's' : ''}`;
           tooltip.style.left = e.pageX + 10 + 'px';
           tooltip.style.top = e.pageY + 10 + 'px';
           tooltip.classList.add('visible');
         });
 
+        dot.addEventListener('mousemove', (e) => {
+          const tooltip = document.getElementById('rrs-tooltip');
+          tooltip.style.left = e.pageX + 10 + 'px';
+          tooltip.style.top = e.pageY + 10 + 'px';
+        });
+
         dot.addEventListener('mouseleave', () => {
+          const tooltip = document.getElementById('rrs-tooltip');
           tooltip.classList.remove('visible');
         });
 
-        dot.addEventListener('click', () => {
+        dot.addEventListener('click', (e) => {
+          e.stopPropagation();
           if (count > 0) {
             showServerList(regionCode);
           }
@@ -601,6 +660,7 @@
       isDragging = true;
       lastMouseX = e.clientX;
       lastMouseY = e.clientY;
+      e.preventDefault();
     });
 
     document.addEventListener('mousemove', (e) => {
@@ -609,7 +669,7 @@
         const deltaY = e.clientY - lastMouseY;
 
         rotationX += deltaX * 0.5;
-        rotationY = Math.max(-30, Math.min(30, rotationY - deltaY * 0.2));
+        rotationY = Math.max(-45, Math.min(45, rotationY + deltaY * 0.3));
 
         lastMouseX = e.clientX;
         lastMouseY = e.clientY;
@@ -662,14 +722,15 @@
     const serverList = document.getElementById('rrs-server-list');
     serverList.innerHTML = html;
 
-    // Add slight delay for animation
+    // Show server list with animation
     setTimeout(() => {
       serverList.classList.add('visible');
-    }, 50);
+    }, 100);
 
     // Add join button handlers
     serverList.querySelectorAll('.rrs-join-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const serverId = btn.getAttribute('data-server-id');
         joinServer(serverId);
       });
@@ -678,6 +739,8 @@
 
   // Join a specific server
   async function joinServer(serverId) {
+    console.log('[Roblox Region Selector] Joining server:', serverId);
+
     // Close overlay
     closeGlobeOverlay();
 
@@ -747,7 +810,7 @@
         }
 
         .rrs-thankyou-btn {
-          background: #00b06f;
+          background: #4181FA;
           color: white;
           border: none;
           border-radius: 8px;
@@ -761,7 +824,7 @@
         }
 
         .rrs-thankyou-btn:hover {
-          background: #00a561;
+          background: #3366CC;
           transform: scale(1.05);
         }
 
