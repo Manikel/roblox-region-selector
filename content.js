@@ -76,7 +76,7 @@
     const regionButton = document.createElement('button');
     regionButton.id = 'rrs-region-button';
     regionButton.innerHTML = `
-      <img src="${chrome.runtime.getURL('icons/icon48.png')}" style="width: 20px; height: 20px; vertical-align: middle;" />
+      <img src="${chrome.runtime.getURL('icons/icon48.png')}" style="width: 28px; height: 28px; vertical-align: middle;" />
     `;
 
     // Style to match Roblox button with blue color
@@ -463,17 +463,28 @@
       return;
     }
 
-    // Check regions in batches
-    const batchSize = 20;
+    console.log(`[RRS] Starting region scan for ${allServers.length} servers`);
+
+    // Check regions in smaller batches with delays to avoid rate limiting
+    const batchSize = 10; // Reduced from 20 to 10
+    const batchDelay = 300; // 300ms delay between batches
+
     for (let i = 0; i < allServers.length; i += batchSize) {
       const batch = allServers.slice(i, i + batchSize);
       const progress = Math.min(i + batchSize, allServers.length);
 
+      // Always show spinner during scan
       document.getElementById('rrs-loading').innerHTML = `
         <div class="rrs-spinner"></div>
-        <div>Scanning servers... (${progress}/${allServers.length})</div>
+        <div>Scanning regions... (${progress}/${allServers.length})</div>
       `;
 
+      // Add delay between batches (except first batch)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, batchDelay));
+      }
+
+      // Use Promise.allSettled instead of Promise.all to handle failures gracefully
       const batchPromises = batch.map(server =>
         getServerRegion(currentPlaceId, server.id).then(region => ({
           ...server,
@@ -481,15 +492,22 @@
         }))
       );
 
-      const batchResults = await Promise.all(batchPromises);
+      const batchResults = await Promise.allSettled(batchPromises);
 
       // Count servers per region
-      batchResults.forEach(server => {
-        if (server.region && server.region !== 'unknown') {
-          regionServerCounts[server.region] = (regionServerCounts[server.region] || 0) + 1;
+      batchResults.forEach(result => {
+        if (result.status === 'fulfilled' && result.value.region && result.value.region !== 'unknown') {
+          const region = result.value.region;
+          regionServerCounts[region] = (regionServerCounts[region] || 0) + 1;
         }
       });
+
+      // Log progress
+      const regionsFound = Object.keys(regionServerCounts).length;
+      console.log(`[RRS] Progress: ${progress}/${allServers.length} scanned, ${regionsFound} regions found`);
     }
+
+    console.log('[RRS] Region scan complete:', regionServerCounts);
 
     // Hide loading, show globe
     document.getElementById('rrs-loading').style.display = 'none';
@@ -498,113 +516,122 @@
 
 
   //
-  // Render 3D globe with Canvas and proper texture mapping
+  // Render 3D globe with optimized Canvas rendering
   function renderGlobe() {
     const globe = document.getElementById('rrs-globe');
-    const size = 600;
-    const centerX = size / 2;
-    const centerY = size / 2;
-    const radius = 250;
+    const displaySize = 600;
+    const renderSize = 400; // Reduced internal resolution for performance
+    const centerX = renderSize / 2;
+    const centerY = renderSize / 2;
+    const radius = renderSize * 0.42; // Slightly smaller for better fit
 
-    let rotationX = 0;
+    let rotationX = -40; // Start showing Americas (negative = rotate west)
     let rotationY = 0;
     let isDragging = false;
     let lastMouseX = 0;
     let lastMouseY = 0;
+    let animationId = null;
 
     // Create canvas for globe rendering
     const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    canvas.width = renderSize;
+    canvas.height = renderSize;
+    canvas.style.width = displaySize + 'px';
+    canvas.style.height = displaySize + 'px';
     canvas.style.cursor = 'grab';
     globe.innerHTML = '';
     globe.appendChild(canvas);
 
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const ctx = canvas.getContext('2d', { alpha: true });
 
     // Load world map texture
     const mapImage = new Image();
     mapImage.crossOrigin = 'anonymous';
     mapImage.src = WORLD_MAP_URL;
 
+    // Pre-create texture data canvas
+    let mapData = null;
+    let mapCanvas = null;
+
     mapImage.onload = function() {
+      mapCanvas = document.createElement('canvas');
+      mapCanvas.width = mapImage.width;
+      mapCanvas.height = mapImage.height;
+      const mapCtx = mapCanvas.getContext('2d');
+      mapCtx.drawImage(mapImage, 0, 0);
+      mapData = mapCtx.getImageData(0, 0, mapImage.width, mapImage.height).data;
       render();
     };
 
     function render() {
       // Clear canvas
-      ctx.clearRect(0, 0, size, size);
+      ctx.clearRect(0, 0, renderSize, renderSize);
 
-      // Draw background gradient
+      // Draw background sphere
       const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-      gradient.addColorStop(0, 'rgba(30, 40, 60, 0.95)');
-      gradient.addColorStop(1, 'rgba(15, 20, 30, 0.95)');
-
+      gradient.addColorStop(0, 'rgba(40, 50, 70, 1)');
+      gradient.addColorStop(1, 'rgba(20, 25, 35, 1)');
       ctx.fillStyle = gradient;
       ctx.beginPath();
       ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Draw textured globe using pixel-by-pixel mapping
-      if (mapImage.complete && mapImage.width > 0) {
-        // Create temporary canvas to read texture pixels
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = mapImage.width;
-        tempCanvas.height = mapImage.height;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(mapImage, 0, 0);
-        const mapData = tempCtx.getImageData(0, 0, mapImage.width, mapImage.height).data;
-
-        const imageData = ctx.getImageData(0, 0, size, size);
+      // Draw textured globe (optimized rendering)
+      if (mapData) {
+        const imageData = ctx.createImageData(renderSize, renderSize);
         const data = imageData.data;
 
-        const rotXRad = rotationX * Math.PI / 180;
-        const rotYRad = rotationY * Math.PI / 180;
+        const cosRotX = Math.cos(rotationX * Math.PI / 180);
+        const sinRotX = Math.sin(rotationX * Math.PI / 180);
+        const cosRotY = Math.cos(rotationY * Math.PI / 180);
+        const sinRotY = Math.sin(rotationY * Math.PI / 180);
 
-        // For each pixel in output
-        for (let y = 0; y < size; y++) {
-          for (let x = 0; x < size; x++) {
+        // Sample every pixel for texture mapping
+        for (let y = 0; y < renderSize; y++) {
+          for (let x = 0; x < renderSize; x++) {
             const dx = x - centerX;
             const dy = y - centerY;
             const distSq = dx * dx + dy * dy;
 
-            // Check if pixel is within sphere
+            // Check if within sphere
             if (distSq <= radius * radius) {
-              // Calculate 3D point on sphere surface (z points towards viewer)
+              // Calculate 3D point on sphere
               const dz = Math.sqrt(radius * radius - distSq);
 
-              // Apply horizontal rotation (around Y axis)
-              const x3d = dx * Math.cos(rotXRad) + dz * Math.sin(rotXRad);
-              const z3d = -dx * Math.sin(rotXRad) + dz * Math.cos(rotXRad);
+              // Apply rotation (matching projectPointToScreen coordinate system)
+              // Convert to spherical first
+              const lat = Math.asin(-dy / radius); // Negative for correct orientation
+              const lon = Math.atan2(dx, dz);
 
-              // Apply vertical rotation (around X axis)
-              const y3d = dy * Math.cos(rotYRad) + z3d * Math.sin(rotYRad);
-              const z3d_final = -dy * Math.sin(rotYRad) + z3d * Math.cos(rotYRad);
+              // Apply rotations
+              const adjustedLon = lon - (rotationX * Math.PI / 180);
+              const adjustedLat = lat + (rotationY * Math.PI / 180);
 
-              // Only draw if facing towards viewer
-              if (z3d_final > 0) {
-                // Convert to spherical coordinates (lat/lon)
-                const lat = Math.asin(Math.max(-1, Math.min(1, y3d / radius)));
-                const lon = Math.atan2(x3d, z3d_final);
+              // Check if visible (front hemisphere)
+              const theta = adjustedLon;
+              const phi = Math.PI / 2 - adjustedLat;
+              const zCheck = radius * Math.sin(phi) * Math.sin(theta);
 
-                // Convert to UV coordinates (0-1 range for equirectangular)
-                const u = (lon / Math.PI + 1) * 0.5;
-                const v = 0.5 - (lat / Math.PI);
+              if (Math.abs(theta) < Math.PI / 2) { // Front hemisphere check
+                // Convert to UV coordinates
+                let u = (adjustedLon / Math.PI + 1) * 0.5;
+                let v = 0.5 - (adjustedLat / Math.PI);
+
+                // Wrap UV coordinates
+                u = ((u % 1) + 1) % 1;
+                v = Math.max(0, Math.min(1, v));
 
                 // Sample texture
                 const tx = Math.floor(u * (mapImage.width - 1));
                 const ty = Math.floor(v * (mapImage.height - 1));
                 const mapIdx = (ty * mapImage.width + tx) * 4;
 
-                // Write pixel with reduced opacity for texture
-                const idx = (y * size + x) * 4;
-                const alpha = mapData[mapIdx + 3] * 0.7;
+                // Write pixel
+                const idx = (y * renderSize + x) * 4;
                 data[idx] = mapData[mapIdx];
                 data[idx + 1] = mapData[mapIdx + 1];
                 data[idx + 2] = mapData[mapIdx + 2];
-                data[idx + 3] = Math.floor(alpha);
+                data[idx + 3] = mapData[mapIdx + 3];
               }
             }
           }
@@ -720,7 +747,21 @@
       };
     }
 
-    // Mouse events for dragging
+    // Mouse events for dragging (optimized with RAF)
+    let renderScheduled = false;
+    function scheduleRender() {
+      if (!renderScheduled) {
+        renderScheduled = true;
+        requestAnimationFrame(() => {
+          render();
+          renderScheduled = false;
+        });
+      }
+    }
+
+    // Scale factor for mouse coordinates (display size / render size)
+    const coordScale = renderSize / displaySize;
+
     canvas.addEventListener('mousedown', (e) => {
       isDragging = true;
       lastMouseX = e.clientX;
@@ -740,12 +781,12 @@
         lastMouseX = e.clientX;
         lastMouseY = e.clientY;
 
-        render();
+        scheduleRender();
       } else {
         // Check hover on dots
         const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        const mouseX = (e.clientX - rect.left) * coordScale;
+        const mouseY = (e.clientY - rect.top) * coordScale;
 
         if (canvas.regionPositions) {
           const tooltip = document.getElementById('rrs-tooltip');
@@ -792,8 +833,8 @@
     canvas.addEventListener('click', (e) => {
       if (!isDragging) {
         const rect = canvas.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+        const mouseX = (e.clientX - rect.left) * coordScale;
+        const mouseY = (e.clientY - rect.top) * coordScale;
 
         if (canvas.regionPositions) {
           for (const region of canvas.regionPositions) {
@@ -1017,56 +1058,92 @@
   async function fetchAllServers(placeId) {
     const allServers = [];
     let cursor = '';
-    const maxPages = 5;
+    const maxPages = 15; // Fetch up to 1500 servers (15 pages * 100)
+
+    console.log('[RRS] Starting to fetch servers...');
 
     for (let page = 0; page < maxPages; page++) {
       try {
         const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100${cursor ? '&cursor=' + cursor : ''}`;
+
+        // Add delay between pages to avoid rate limiting (150ms)
+        if (page > 0) {
+          await new Promise(resolve => setTimeout(resolve, 150));
+        }
+
         const response = await fetch(url);
 
-        if (!response.ok) break;
+        if (!response.ok) {
+          console.log(`[RRS] Fetch failed with status ${response.status}, stopping at page ${page}`);
+          break;
+        }
 
         const data = await response.json();
-        if (!data.data || data.data.length === 0) break;
+        if (!data.data || data.data.length === 0) {
+          console.log(`[RRS] No more servers found at page ${page}`);
+          break;
+        }
 
         allServers.push(...data.data);
+        console.log(`[RRS] Fetched page ${page + 1}: ${data.data.length} servers (total: ${allServers.length})`);
+
+        // Update loading UI
+        document.getElementById('rrs-loading').innerHTML = `
+          <div class="rrs-spinner"></div>
+          <div>Loading servers... (${allServers.length} found)</div>
+        `;
 
         if (data.nextPageCursor) {
           cursor = data.nextPageCursor;
         } else {
+          console.log(`[RRS] No more pages available`);
           break;
         }
       } catch (error) {
-        console.error('[Roblox Region Selector] Error fetching servers:', error);
+        console.error('[RRS] Error fetching servers:', error);
         break;
       }
     }
 
+    console.log(`[RRS] Total servers fetched: ${allServers.length}`);
     return allServers;
   }
 
-  // Helper: Get server region
-  async function getServerRegion(placeId, serverId) {
-    try {
-      const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage({
-          action: 'getServerDetails',
-          placeId: placeId,
-          serverId: serverId
-        }, (response) => {
-          resolve(response);
+  // Helper: Get server region with retry logic
+  async function getServerRegion(placeId, serverId, retries = 2) {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        // Add exponential backoff delay for retries
+        if (attempt > 0) {
+          const delay = Math.pow(2, attempt) * 100; // 200ms, 400ms
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+
+        const response = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({
+            action: 'getServerDetails',
+            placeId: placeId,
+            serverId: serverId
+          }, (response) => {
+            resolve(response);
+          });
         });
-      });
 
-      if (response && response.success && response.region) {
-        return response.region;
+        if (response && response.success && response.region) {
+          return response.region;
+        }
+
+        // If we got a response but no region, don't retry
+        if (response && response.success) {
+          return 'unknown';
+        }
+      } catch (error) {
+        if (attempt === retries) {
+          console.error('[RRS] Error getting server region after retries:', error);
+        }
       }
-
-      return 'unknown';
-    } catch (error) {
-      console.error('[Roblox Region Selector] Error getting server region:', error);
-      return 'unknown';
     }
+    return 'unknown';
   }
 
   // Inject the injector script
