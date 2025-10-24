@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Roblox Region Selector",
-  "version": "2.0.0",
-  "description": "Interactive globe interface to choose Roblox servers by region for better connection",
+  "version": "1.1.0",
+  "description": "Choose your preferred Roblox server region for better ping and connection",
   
   "icons": {
     "16": "icons/icon16.png",
@@ -46,7 +46,12 @@
   },
   
   "web_accessible_resources": [{
-    "resources": ["injector.js", "icons/icon16.png", "icons/icon48.png", "icons/icon128.png", "icons/world-map.png"],
+    "resources": [
+      "injector.js",
+      "icons/world-map.png",
+      "icons/icon48.png",
+      "icons/icon128.png"
+    ],
     "matches": ["*://*.roblox.com/*"]
   }]
 }
