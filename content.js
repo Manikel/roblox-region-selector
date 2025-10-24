@@ -1,4 +1,4 @@
-// content.js - Enhanced UI with in-page globe interface
+// content.js - Enhanced UI with THREE.js globe interface
 (function() {
   'use strict';
 
@@ -8,6 +8,7 @@
   let allServers = [];
   let regionServerCounts = {};
   let currentSelectedRegion = null;
+  let threeJsLoaded = false;
 
   // Region coordinates on globe (latitude, longitude)
   const REGION_COORDS = {
@@ -32,6 +33,30 @@
 
   // World map texture URL
   const WORLD_MAP_URL = chrome.runtime.getURL('icons/world-map.png');
+
+  // Load THREE.js dynamically
+  function loadThreeJs() {
+    return new Promise((resolve, reject) => {
+      if (window.THREE) {
+        threeJsLoaded = true;
+        resolve();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+      script.onload = () => {
+        threeJsLoaded = true;
+        console.log('[RRS] THREE.js loaded successfully');
+        resolve();
+      };
+      script.onerror = () => {
+        console.error('[RRS] Failed to load THREE.js');
+        reject(new Error('Failed to load THREE.js'));
+      };
+      document.head.appendChild(script);
+    });
+  }
 
   // Inject button next to Roblox play button
   function injectRegionButton() {
@@ -148,6 +173,15 @@
   async function openGlobeOverlay() {
     if (document.getElementById('rrs-globe-overlay')) return;
 
+    // Load THREE.js first
+    try {
+      await loadThreeJs();
+    } catch (error) {
+      console.error('[RRS] Failed to load THREE.js:', error);
+      alert('Failed to load 3D library. Please refresh the page and try again.');
+      return;
+    }
+
     // Create overlay
     const overlay = document.createElement('div');
     overlay.id = 'rrs-globe-overlay';
@@ -258,24 +292,6 @@
           cursor: grabbing;
         }
 
-        .rrs-region-dot {
-          cursor: pointer;
-          transition: all 0.2s ease;
-        }
-
-        .rrs-region-dot:hover {
-          r: 12 !important;
-        }
-
-        .rrs-region-dot.inactive {
-          fill: #666;
-        }
-
-        .rrs-region-dot.active {
-          fill: #4181FA;
-          filter: drop-shadow(0 0 8px rgba(65, 129, 250, 0.8));
-        }
-
         #rrs-close-btn {
           position: absolute;
           top: 20px;
@@ -354,17 +370,26 @@
 
         .rrs-player-avatars {
           display: flex;
-          gap: 8px;
+          gap: 6px;
           margin-bottom: 15px;
           flex-wrap: wrap;
+          max-height: 200px;
+          overflow-y: auto;
         }
 
         .rrs-avatar {
-          width: 40px;
-          height: 40px;
+          width: 36px;
+          height: 36px;
           border-radius: 50%;
           border: 2px solid rgba(255, 255, 255, 0.2);
           object-fit: cover;
+          transition: transform 0.2s ease;
+        }
+
+        .rrs-avatar:hover {
+          transform: scale(1.2);
+          border-color: #4181FA;
+          z-index: 10;
         }
 
         .rrs-join-btn {
@@ -435,6 +460,20 @@
         #rrs-server-list::-webkit-scrollbar-thumb:hover {
           background: rgba(255, 255, 255, 0.3);
         }
+
+        .rrs-player-avatars::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .rrs-player-avatars::-webkit-scrollbar-track {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 3px;
+        }
+
+        .rrs-player-avatars::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.2);
+          border-radius: 3px;
+        }
       </style>
 
       <div id="rrs-close-btn">×</div>
@@ -466,8 +505,8 @@
       }
     });
 
-    // Render globe immediately (with all gray dots) and store reference
-    globeRendererInstance = renderGlobe();
+    // Render THREE.js globe
+    globeRendererInstance = renderThreeJsGlobe();
 
     // Start scanning servers in real-time
     scanServersForRegionsRealtime();
@@ -476,10 +515,15 @@
   function closeGlobeOverlay() {
     const overlay = document.getElementById('rrs-globe-overlay');
     if (overlay) {
+      // Clean up THREE.js resources
+      if (globeRendererInstance && globeRendererInstance.cleanup) {
+        globeRendererInstance.cleanup();
+      }
+
       overlay.style.animation = 'rrs-fadeOut 0.3s ease';
       setTimeout(() => {
         overlay.remove();
-        globeRendererInstance = null; // Clean up reference
+        globeRendererInstance = null;
       }, 300);
     }
   }
@@ -487,15 +531,14 @@
   // Global reference to globe renderer for real-time updates
   let globeRendererInstance = null;
 
-  // Real-time server scanning - updates globe as regions are discovered
+  // Real-time server scanning - FIXED: Scan ALL servers and show way more per region
   async function scanServersForRegionsRealtime() {
     regionServerCounts = {};
 
-    // Update status
     const statusText = document.getElementById('rrs-status-text');
     const miniSpinner = document.getElementById('rrs-mini-spinner');
 
-    // Fetch all servers
+    // FIXED: Fetch way more servers (2000+)
     statusText.textContent = 'Loading servers...';
     allServers = await fetchAllServers(currentPlaceId);
 
@@ -505,31 +548,25 @@
       return;
     }
 
-    // Ensure we scan at least 1000 servers (or all if less than 1000)
-    const minServersToScan = 1000;
-    const serversToScan = Math.min(allServers.length, Math.max(minServersToScan, allServers.length));
-    const scanList = allServers.slice(0, serversToScan);
-
-    console.log(`[RRS] Fetched ${allServers.length} servers, will scan ${scanList.length} for regions`);
+    // FIXED: Scan ALL fetched servers (not just 1000)
+    const scanList = allServers; // Scan everything we fetched
+    console.log(`[RRS] Fetched ${allServers.length} servers, will scan ALL for regions`);
     statusText.textContent = `Scanning regions... (0/${scanList.length})`;
 
-    // Check regions in batches with real-time updates
-    const batchSize = 10;
-    const batchDelay = 300;
+    // Check regions in batches
+    const batchSize = 15; // Slightly larger batches
+    const batchDelay = 250; // Slightly faster
 
     for (let i = 0; i < scanList.length; i += batchSize) {
       const batch = scanList.slice(i, i + batchSize);
       const progress = Math.min(i + batchSize, scanList.length);
 
-      // Update status
       statusText.textContent = `Scanning regions... (${progress}/${scanList.length})`;
 
-      // Add delay between batches
       if (i > 0) {
         await new Promise(resolve => setTimeout(resolve, batchDelay));
       }
 
-      // Check batch regions
       const batchPromises = batch.map(server =>
         getServerRegion(currentPlaceId, server.id).then(region => ({
           ...server,
@@ -539,14 +576,12 @@
 
       const batchResults = await Promise.allSettled(batchPromises);
 
-      // Update region counts and store region info in allServers
       let newRegionFound = false;
       batchResults.forEach((result, idx) => {
         if (result.status === 'fulfilled' && result.value.region) {
           const region = result.value.region;
           const serverIndex = i + idx;
 
-          // Store region in allServers array
           if (allServers[serverIndex]) {
             allServers[serverIndex].region = region;
           }
@@ -561,407 +596,208 @@
         }
       });
 
-      // Re-render globe to update dots if new region found
       if (newRegionFound && globeRendererInstance) {
         globeRendererInstance.updateDots();
       }
 
-      // Log progress
       const regionsFound = Object.keys(regionServerCounts).length;
       console.log(`[RRS] Progress: ${progress}/${scanList.length} scanned, ${regionsFound} regions found, ${Object.values(regionServerCounts).reduce((a,b) => a+b, 0)} servers mapped`);
     }
 
     console.log('[RRS] Real-time scan complete:', regionServerCounts);
 
-    // Update status - scanning complete
     const totalMapped = Object.values(regionServerCounts).reduce((a,b) => a+b, 0);
     statusText.textContent = `Found ${Object.keys(regionServerCounts).length} regions (${totalMapped} servers)`;
     miniSpinner.classList.add('hidden');
   }
 
+  // Render THREE.js globe with proper texture mapping
+  function renderThreeJsGlobe() {
+    const container = document.getElementById('rrs-globe');
+    const width = 600;
+    const height = 600;
 
-  //
-  // Render 3D globe with FIXED orientation and texture mapping
-  function renderGlobe() {
-    const globe = document.getElementById('rrs-globe');
-    const displaySize = 600;
-    const renderSize = 400; // Reduced internal resolution for performance
-    const centerX = renderSize / 2;
-    const centerY = renderSize / 2;
-    const radius = renderSize * 0.42; // Slightly smaller for better fit
+    // Setup scene
+    const scene = new THREE.Scene();
 
-    let rotationX = -40; // Start showing Americas (negative = rotate west)
-    let rotationY = 0;
+    // Setup camera
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+    camera.position.z = 2.5;
+
+    // Setup renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(width, height);
+    renderer.setClearColor(0x000000, 0);
+    container.appendChild(renderer.domElement);
+
+    // Create globe sphere
+    const geometry = new THREE.SphereGeometry(1, 64, 64);
+
+    // Load texture
+    const textureLoader = new THREE.TextureLoader();
+    const texture = textureLoader.load(WORLD_MAP_URL);
+
+    // Create material with texture
+    const material = new THREE.MeshPhongMaterial({
+      map: texture,
+      shininess: 5,
+      transparent: false
+    });
+
+    const globe = new THREE.Mesh(geometry, material);
+    scene.add(globe);
+
+    // Add lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    directionalLight.position.set(5, 3, 5);
+    scene.add(directionalLight);
+
+    // Create dots for regions
+    const dotGeometry = new THREE.SphereGeometry(0.015, 16, 16);
+    const activeMaterial = new THREE.MeshBasicMaterial({ color: 0x4181FA });
+    const inactiveMaterial = new THREE.MeshBasicMaterial({ color: 0x666666 });
+
+    const regionDots = {};
+
+    Object.entries(REGION_COORDS).forEach(([code, data]) => {
+      const lat = data.lat * (Math.PI / 180);
+      const lon = data.lon * (Math.PI / 180);
+
+      // Convert lat/lon to 3D position on sphere
+      const x = Math.cos(lat) * Math.sin(lon);
+      const y = Math.sin(lat);
+      const z = Math.cos(lat) * Math.cos(lon);
+
+      const dot = new THREE.Mesh(dotGeometry, inactiveMaterial.clone());
+      dot.position.set(x * 1.01, y * 1.01, z * 1.01);
+      dot.userData = { code, data };
+      scene.add(dot);
+
+      regionDots[code] = dot;
+    });
+
+    // Rotation controls
     let isDragging = false;
-    let lastMouseX = 0;
-    let lastMouseY = 0;
+    let previousMousePosition = { x: 0, y: 0 };
 
-    // Create canvas for globe rendering
-    const canvas = document.createElement('canvas');
-    canvas.width = renderSize;
-    canvas.height = renderSize;
-    canvas.style.width = displaySize + 'px';
-    canvas.style.height = displaySize + 'px';
-    canvas.style.cursor = 'grab';
-    globe.innerHTML = '';
-    globe.appendChild(canvas);
-
-    const ctx = canvas.getContext('2d', { alpha: true });
-
-    // Load world map texture
-    const mapImage = new Image();
-    mapImage.crossOrigin = 'anonymous';
-    mapImage.src = WORLD_MAP_URL;
-
-    // Pre-create texture data canvas
-    let mapData = null;
-    let mapCanvas = null;
-
-    mapImage.onload = function() {
-      mapCanvas = document.createElement('canvas');
-      mapCanvas.width = mapImage.width;
-      mapCanvas.height = mapImage.height;
-      const mapCtx = mapCanvas.getContext('2d');
-      mapCtx.drawImage(mapImage, 0, 0);
-      mapData = mapCtx.getImageData(0, 0, mapImage.width, mapImage.height).data;
-      render();
-    };
-
-    function render() {
-      // Clear canvas
-      ctx.clearRect(0, 0, renderSize, renderSize);
-
-      // Draw background sphere (full opaque background)
-      const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
-      gradient.addColorStop(0, 'rgba(40, 50, 70, 1)');
-      gradient.addColorStop(1, 'rgba(20, 25, 35, 1)');
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Draw textured globe with FIXED orientation
-      if (mapData) {
-        const imageData = ctx.createImageData(renderSize, renderSize);
-        const data = imageData.data;
-
-        const rotXRad = rotationX * Math.PI / 180;
-        const rotYRad = -rotationY * Math.PI / 180; // FIXED: Inverted Y rotation for correct up/down
-
-        // Precompute rotation matrices
-        const cosRotX = Math.cos(rotXRad);
-        const sinRotX = Math.sin(rotXRad);
-        const cosRotY = Math.cos(rotYRad);
-        const sinRotY = Math.sin(rotYRad);
-
-        // For each pixel
-        for (let y = 0; y < renderSize; y++) {
-          for (let x = 0; x < renderSize; x++) {
-            const dx = x - centerX;
-            const dy = y - centerY;
-            const distSq = dx * dx + dy * dy;
-
-            // Check if within sphere
-            if (distSq <= radius * radius) {
-              // Calculate z coordinate (depth into screen)
-              const dz = Math.sqrt(radius * radius - distSq);
-
-              // Initial 3D point on sphere (normalized)
-              let nx = dx / radius;
-              let ny = dy / radius;
-              let nz = dz / radius;
-
-              // Apply Y-axis rotation (horizontal spin)
-              const nx_rotated = nx * cosRotX - nz * sinRotX; // FIXED: Changed + to - for correct rotation
-              const nz_rotated = nx * sinRotX + nz * cosRotX;
-              nx = nx_rotated;
-              nz = nz_rotated;
-
-              // Apply X-axis rotation (vertical tilt)
-              const ny_rotated = ny * cosRotY - nz * sinRotY;
-              const nz_final = ny * sinRotY + nz * cosRotY;
-              ny = ny_rotated;
-              nz = nz_final;
-
-              // FIXED: Render both hemispheres - check if we should show the pixel
-              // Use a small threshold instead of strict > 0 to avoid artifacts
-              const shouldRender = nz > -0.1;
-
-              if (shouldRender) {
-                // FIXED: Corrected UV mapping (removed negation, flipped v axis)
-                const u = (Math.atan2(nx, nz) / (2 * Math.PI)) + 0.5;
-                const v = 0.5 - (Math.asin(ny) / Math.PI); // FIXED: Flipped v coordinate
-
-                // Sample texture
-                const tx = Math.floor(u * (mapImage.width - 1));
-                const ty = Math.floor(v * (mapImage.height - 1));
-                const mapIdx = (ty * mapImage.width + tx) * 4;
-
-                // Calculate brightness based on depth (for 3D effect)
-                const brightness = nz > 0 ? 1.0 : 0.3 + (nz + 1) * 0.3;
-
-                // Write pixel with brightness adjustment
-                const idx = (y * renderSize + x) * 4;
-                data[idx] = mapData[mapIdx] * brightness;
-                data[idx + 1] = mapData[mapIdx + 1] * brightness;
-                data[idx + 2] = mapData[mapIdx + 2] * brightness;
-                data[idx + 3] = 255; // FIXED: Full opacity to prevent see-through
-              }
-            }
-          }
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-      }
-
-      // Draw grid lines
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-      ctx.lineWidth = 1;
-
-      // Draw latitude lines
-      for (let lat = -60; lat <= 60; lat += 30) {
-        ctx.beginPath();
-        let firstPoint = true;
-        for (let lon = -180; lon <= 180; lon += 5) {
-          const point = projectPointToScreen(lat, lon);
-          if (point.visible) {
-            if (firstPoint) {
-              ctx.moveTo(point.x, point.y);
-              firstPoint = false;
-            } else {
-              ctx.lineTo(point.x, point.y);
-            }
-          }
-        }
-        ctx.stroke();
-      }
-
-      // Draw longitude lines
-      for (let lon = -180; lon < 180; lon += 30) {
-        ctx.beginPath();
-        let firstPoint = true;
-        for (let lat = -90; lat <= 90; lat += 5) {
-          const point = projectPointToScreen(lat, lon);
-          if (point.visible) {
-            if (firstPoint) {
-              ctx.moveTo(point.x, point.y);
-              firstPoint = false;
-            } else {
-              ctx.lineTo(point.x, point.y);
-            }
-          }
-        }
-        ctx.stroke();
-      }
-
-      // Draw outline
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Draw region dots
-      const regions = Object.entries(REGION_COORDS).map(([code, data]) => {
-        const point = projectPointToScreen(data.lat, data.lon);
-        const serverCount = regionServerCounts[code] || 0;
-        const isActive = serverCount > 0;
-
-        return {
-          code,
-          data,
-          point,
-          serverCount,
-          isActive
-        };
-      }).filter(r => r.point.visible)
-        .sort((a, b) => a.point.z - b.point.z);
-
-      regions.forEach(region => {
-        const dotSize = 8 * region.point.scale;
-        ctx.fillStyle = region.isActive ? '#4181FA' : '#666';
-
-        if (region.isActive) {
-          ctx.shadowColor = 'rgba(65, 129, 250, 0.8)';
-          ctx.shadowBlur = 8;
-        }
-
-        ctx.beginPath();
-        ctx.arc(region.point.x, region.point.y, dotSize, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.shadowBlur = 0;
-      });
-
-      // Store region positions for click detection
-      canvas.regionPositions = regions;
-    }
-
-    // FIXED: Corrected projection to match texture orientation
-    function projectPointToScreen(lat, lon) {
-      // Convert lat/lon to normalized 3D coordinates
-      const latRad = lat * (Math.PI / 180);
-      const lonRad = lon * (Math.PI / 180);
-
-      // Standard spherical to Cartesian conversion
-      let nx = Math.cos(latRad) * Math.sin(lonRad);
-      let ny = -Math.sin(latRad); // FIXED: Negated for correct orientation
-      let nz = Math.cos(latRad) * Math.cos(lonRad);
-
-      // Apply Y-axis rotation (horizontal spin) - matching texture rotation
-      const rotXRad = rotationX * (Math.PI / 180);
-      const cosRotX = Math.cos(rotXRad);
-      const sinRotX = Math.sin(rotXRad);
-      const nx_rotated = nx * cosRotX - nz * sinRotX; // FIXED: Changed + to -
-      const nz_rotated = nx * sinRotX + nz * cosRotX;
-      nx = nx_rotated;
-      nz = nz_rotated;
-
-      // Apply X-axis rotation (vertical tilt) - matching texture rotation
-      const rotYRad = -rotationY * (Math.PI / 180); // FIXED: Inverted Y rotation
-      const cosRotY = Math.cos(rotYRad);
-      const sinRotY = Math.sin(rotYRad);
-      const ny_rotated = ny * cosRotY - nz * sinRotY;
-      const nz_final = ny * sinRotY + nz * cosRotY;
-      ny = ny_rotated;
-      nz = nz_final;
-
-      // Scale back to radius
-      const x = nx * radius;
-      const y = ny * radius;
-      const z = nz;
-
-      const perspective = 600;
-      const scale = perspective / (perspective + z * radius);
-
-      return {
-        x: centerX + x * scale,
-        y: centerY + y * scale,
-        visible: nz > -0.1, // FIXED: Show more of the globe
-        scale: scale,
-        z: z * radius
-      };
-    }
-
-    // Mouse events for dragging (optimized with RAF)
-    let renderScheduled = false;
-    function scheduleRender() {
-      if (!renderScheduled) {
-        renderScheduled = true;
-        requestAnimationFrame(() => {
-          render();
-          renderScheduled = false;
-        });
-      }
-    }
-
-    // Scale factor for mouse coordinates (display size / render size)
-    const coordScale = renderSize / displaySize;
-
-    canvas.addEventListener('mousedown', (e) => {
+    renderer.domElement.addEventListener('mousedown', (e) => {
       isDragging = true;
-      lastMouseX = e.clientX;
-      lastMouseY = e.clientY;
-      canvas.style.cursor = 'grabbing';
-      e.preventDefault();
+      previousMousePosition = { x: e.clientX, y: e.clientY };
     });
 
-    canvas.addEventListener('mousemove', (e) => {
+    renderer.domElement.addEventListener('mousemove', (e) => {
       if (isDragging) {
-        const deltaX = e.clientX - lastMouseX;
-        const deltaY = e.clientY - lastMouseY;
+        const deltaX = e.clientX - previousMousePosition.x;
+        const deltaY = e.clientY - previousMousePosition.y;
 
-        // FIXED: Inverted controls are now correct
-        rotationX += deltaX * 0.5;
-        rotationY = Math.max(-45, Math.min(45, rotationY - deltaY * 0.3)); // FIXED: Changed + to -
+        globe.rotation.y += deltaX * 0.005;
+        globe.rotation.x += deltaY * 0.005;
 
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
+        // Also rotate dots with globe
+        Object.values(regionDots).forEach(dot => {
+          dot.rotation.y = globe.rotation.y;
+          dot.rotation.x = globe.rotation.x;
+        });
 
-        scheduleRender();
-      } else {
-        // Check hover on dots
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) * coordScale;
-        const mouseY = (e.clientY - rect.top) * coordScale;
-
-        if (canvas.regionPositions) {
-          const tooltip = document.getElementById('rrs-tooltip');
-          let hovering = false;
-
-          for (const region of canvas.regionPositions) {
-            const dist = Math.sqrt(
-              Math.pow(mouseX - region.point.x, 2) +
-              Math.pow(mouseY - region.point.y, 2)
-            );
-            const dotSize = 8 * region.point.scale;
-
-            if (dist <= dotSize) {
-              tooltip.textContent = `${region.data.name}: ${region.serverCount} server${region.serverCount !== 1 ? 's' : ''}`;
-              tooltip.style.left = e.pageX + 10 + 'px';
-              tooltip.style.top = e.pageY + 10 + 'px';
-              tooltip.classList.add('visible');
-              canvas.style.cursor = 'pointer';
-              hovering = true;
-              break;
-            }
-          }
-
-          if (!hovering) {
-            tooltip.classList.remove('visible');
-            canvas.style.cursor = 'grab';
-          }
-        }
+        previousMousePosition = { x: e.clientX, y: e.clientY };
       }
-    });
 
-    canvas.addEventListener('mouseup', () => {
-      isDragging = false;
-      canvas.style.cursor = 'grab';
-    });
+      // Raycasting for hover
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / width) * 2 - 1,
+        -((e.clientY - rect.top) / height) * 2 + 1
+      );
 
-    canvas.addEventListener('mouseleave', () => {
-      isDragging = false;
-      canvas.style.cursor = 'grab';
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(Object.values(regionDots));
       const tooltip = document.getElementById('rrs-tooltip');
-      tooltip.classList.remove('visible');
+
+      if (intersects.length > 0) {
+        const dot = intersects[0].object;
+        const { code, data } = dot.userData;
+        const serverCount = regionServerCounts[code] || 0;
+
+        tooltip.textContent = `${data.name}: ${serverCount} server${serverCount !== 1 ? 's' : ''}`;
+        tooltip.style.left = e.pageX + 10 + 'px';
+        tooltip.style.top = e.pageY + 10 + 'px';
+        tooltip.classList.add('visible');
+        renderer.domElement.style.cursor = 'pointer';
+      } else {
+        tooltip.classList.remove('visible');
+        renderer.domElement.style.cursor = isDragging ? 'grabbing' : 'grab';
+      }
     });
 
-    canvas.addEventListener('click', (e) => {
-      if (!isDragging) {
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) * coordScale;
-        const mouseY = (e.clientY - rect.top) * coordScale;
+    renderer.domElement.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
 
-        if (canvas.regionPositions) {
-          for (const region of canvas.regionPositions) {
-            const dist = Math.sqrt(
-              Math.pow(mouseX - region.point.x, 2) +
-              Math.pow(mouseY - region.point.y, 2)
-            );
-            const dotSize = 8 * region.point.scale;
+    renderer.domElement.addEventListener('mouseleave', () => {
+      isDragging = false;
+      document.getElementById('rrs-tooltip').classList.remove('visible');
+    });
 
-            if (dist <= dotSize && region.serverCount > 0) {
-              showServerList(region.code);
-              break;
-            }
-          }
+    // Click handler
+    renderer.domElement.addEventListener('click', (e) => {
+      if (isDragging) return;
+
+      const rect = renderer.domElement.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / width) * 2 - 1,
+        -((e.clientY - rect.top) / height) * 2 + 1
+      );
+
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, camera);
+
+      const intersects = raycaster.intersectObjects(Object.values(regionDots));
+
+      if (intersects.length > 0) {
+        const dot = intersects[0].object;
+        const { code } = dot.userData;
+        const serverCount = regionServerCounts[code] || 0;
+
+        if (serverCount > 0) {
+          showServerList(code);
         }
       }
     });
 
-    // Return API for external updates
+    // Animation loop
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Return API
     return {
       updateDots: function() {
-        // Trigger re-render to update dots
-        scheduleRender();
+        Object.entries(regionDots).forEach(([code, dot]) => {
+          const serverCount = regionServerCounts[code] || 0;
+          dot.material = serverCount > 0 ? activeMaterial : inactiveMaterial;
+        });
+      },
+      cleanup: function() {
+        // Clean up THREE.js resources
+        geometry.dispose();
+        material.dispose();
+        renderer.dispose();
+        if (container.contains(renderer.domElement)) {
+          container.removeChild(renderer.domElement);
+        }
       }
     };
   }
 
-  // FIXED: Show server list with player avatars
+  // FIXED: Show server list with ALL player avatars
   async function showServerList(regionCode) {
-    // If clicking the same region, do nothing
     if (currentSelectedRegion === regionCode) {
       return;
     }
@@ -969,17 +805,12 @@
     const serverList = document.getElementById('rrs-server-list');
     const globeContainer = document.getElementById('rrs-globe-container');
 
-    // If there's already a region selected, animate out first
     if (currentSelectedRegion !== null) {
-      // Slide out and fade out current server list
       serverList.classList.remove('visible');
       globeContainer.classList.remove('shifted');
-
-      // Wait for animation to complete
       await new Promise(resolve => setTimeout(resolve, 600));
     }
 
-    // Update current selection
     currentSelectedRegion = regionCode;
 
     const regionData = REGION_COORDS[regionCode];
@@ -988,7 +819,6 @@
     // Sort by player count (high to low)
     regionServers.sort((a, b) => b.playing - a.playing);
 
-    // Build server list HTML
     const locationName = regionData.state
       ? `${regionData.name}, ${regionData.state}`
       : regionData.name;
@@ -1000,18 +830,18 @@
       </div>
     `;
 
-    // FIXED: Add servers with player avatars
+    // FIXED: Display ALL player avatars (up to 50, which is Roblox's limit)
     for (const server of regionServers) {
-      // Get player avatars (limit to 6 players)
-      const playerIds = server.playerTokens ? server.playerTokens.slice(0, 6) : [];
+      const playerIds = server.playerTokens || [];
+      const displayLimit = Math.min(playerIds.length, 50); // Show all up to 50
 
       let avatarsHtml = '';
-      if (playerIds.length > 0) {
+      if (displayLimit > 0) {
         avatarsHtml = '<div class="rrs-player-avatars">';
-        for (const token of playerIds) {
-          // Extract user ID from token if possible, otherwise use placeholder
-          // Roblox avatar API: https://thumbnails.roblox.com/v1/users/avatar-headshot?userIds={ids}&size=48x48&format=Png
-          avatarsHtml += `<img class="rrs-avatar" src="https://www.roblox.com/headshot-thumbnail/image?userId=${token}&width=48&height=48&format=png" onerror="this.src='${chrome.runtime.getURL('icons/icon48.png')}'" />`;
+        for (let i = 0; i < displayLimit; i++) {
+          const token = playerIds[i];
+          // Roblox headshot thumbnail API
+          avatarsHtml += `<img class="rrs-avatar" src="https://www.roblox.com/headshot-thumbnail/image?userId=${token}&width=48&height=48&format=png" onerror="this.src='${chrome.runtime.getURL('icons/icon48.png')}'" title="Player ${i + 1}" />`;
         }
         avatarsHtml += '</div>';
       }
@@ -1030,13 +860,11 @@
     const serverListElem = document.getElementById('rrs-server-list');
     serverListElem.innerHTML = html;
 
-    // Shift globe left and show server list with animation
     setTimeout(() => {
       globeContainer.classList.add('shifted');
       serverListElem.classList.add('visible');
     }, 100);
 
-    // Add join button handlers
     serverListElem.querySelectorAll('.rrs-join-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1050,17 +878,14 @@
   async function joinServer(serverId) {
     console.log('[Roblox Region Selector] Joining server:', serverId);
 
-    // Close overlay
     closeGlobeOverlay();
 
-    // Join via injector
     window.postMessage({
       type: 'JOIN_SPECIFIC_SERVER',
       placeId: currentPlaceId,
       serverId: serverId
     }, window.location.origin);
 
-    // Show thank you popup after a short delay
     setTimeout(() => {
       showThankYouPopup();
     }, 1000);
@@ -1157,18 +982,15 @@
 
     document.body.appendChild(popup);
 
-    // Close button
     document.getElementById('rrs-close-thankyou').addEventListener('click', () => {
       popup.remove();
     });
 
-    // Rate button
     document.getElementById('rrs-rate-btn').addEventListener('click', () => {
       window.open('https://chrome.google.com/webstore', '_blank');
       popup.remove();
     });
 
-    // Auto close after 10 seconds
     setTimeout(() => {
       if (popup.parentNode) {
         popup.remove();
@@ -1176,11 +998,11 @@
     }, 10000);
   }
 
-  // Helper: Fetch all servers
+  // FIXED: Fetch way more servers (2000+)
   async function fetchAllServers(placeId) {
     const allServers = [];
     let cursor = '';
-    const maxPages = 15; // Fetch up to 1500 servers (15 pages * 100)
+    const maxPages = 20; // FIXED: Fetch up to 2000 servers (20 pages × 100)
 
     console.log('[RRS] Starting to fetch servers...');
 
@@ -1188,7 +1010,6 @@
       try {
         const url = `https://games.roblox.com/v1/games/${placeId}/servers/Public?sortOrder=Desc&excludeFullGames=true&limit=100${cursor ? '&cursor=' + cursor : ''}`;
 
-        // Add delay between pages to avoid rate limiting (150ms)
         if (page > 0) {
           await new Promise(resolve => setTimeout(resolve, 150));
         }
@@ -1229,9 +1050,8 @@
   async function getServerRegion(placeId, serverId, retries = 2) {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        // Add exponential backoff delay for retries
         if (attempt > 0) {
-          const delay = Math.pow(2, attempt) * 100; // 200ms, 400ms
+          const delay = Math.pow(2, attempt) * 100;
           await new Promise(resolve => setTimeout(resolve, delay));
         }
 
@@ -1249,7 +1069,6 @@
           return response.region;
         }
 
-        // If we got a response but no region, don't retry
         if (response && response.success) {
           return 'unknown';
         }
