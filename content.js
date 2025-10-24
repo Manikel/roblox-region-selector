@@ -543,7 +543,10 @@
       svg += `<circle cx="${centerX}" cy="${centerY}" r="${radius}" fill="url(#globeGradient)" stroke="rgba(255, 255, 255, 0.2)" stroke-width="2"/>`;
 
       // Draw world map texture using grid-based approach for 3D projection
-      const gridSize = 20; // Reduced from 30 for better performance
+      const gridSize = 25; // Grid resolution for texture mapping
+      const mapWidth = 2048; // Assumed texture width
+      const mapHeight = 1024; // Assumed texture height
+
       for (let latIdx = 0; latIdx < gridSize; latIdx++) {
         for (let lonIdx = 0; lonIdx < gridSize * 2; lonIdx++) {
           const lat = 90 - (latIdx / gridSize) * 180;
@@ -563,25 +566,46 @@
             const u2 = (nextLon + 180) / 360;
             const v2 = (90 - nextLat) / 180;
 
-            // Calculate the size of this quad in pixels
-            const quadWidth = Math.max(Math.abs(p2.x - p1.x), Math.abs(p3.x - p4.x));
-            const quadHeight = Math.max(Math.abs(p4.y - p1.y), Math.abs(p3.y - p2.y));
+            // Calculate the actual pixel coordinates in the source texture
+            const srcX = u1 * mapWidth;
+            const srcY = v1 * mapHeight;
+            const srcWidth = (u2 - u1) * mapWidth;
+            const srcHeight = (v2 - v1) * mapHeight;
 
-            // Create a pattern for this cell that shows the correct portion of the world map
-            const patternId = `worldMapCell-${latIdx}-${lonIdx}`;
+            // Calculate destination quad bounds
+            const minX = Math.min(p1.x, p2.x, p3.x, p4.x);
+            const minY = Math.min(p1.y, p2.y, p3.y, p4.y);
+            const maxX = Math.max(p1.x, p2.x, p3.x, p4.x);
+            const maxY = Math.max(p1.y, p2.y, p3.y, p4.y);
+            const destWidth = maxX - minX;
+            const destHeight = maxY - minY;
+
+            // Create a unique clip path for this quad
+            const clipId = `clip-${latIdx}-${lonIdx}`;
             svg += `
               <defs>
-                <pattern id="${patternId}" patternUnits="objectBoundingBox" width="1" height="1">
-                  <image href="${WORLD_MAP_URL}"
-                         x="${-u1}" y="${-v1}"
-                         width="1" height="${1 / ((v2 - v1) || 0.01)}"
-                         preserveAspectRatio="none"
-                         transform="scale(${1 / ((u2 - u1) || 0.01)}, 1)" />
-                </pattern>
+                <clipPath id="${clipId}">
+                  <path d="M${p1.x},${p1.y} L${p2.x},${p2.y} L${p3.x},${p3.y} L${p4.x},${p4.y} Z" />
+                </clipPath>
               </defs>
-              <path d="M${p1.x},${p1.y} L${p2.x},${p2.y} L${p3.x},${p3.y} L${p4.x},${p4.y} Z"
-                    fill="url(#${patternId})"
-                    opacity="0.7" />
+            `;
+
+            // Draw the image slice for this quad
+            // Position the full map, then clip to show only this portion
+            const scaleX = destWidth / srcWidth;
+            const scaleY = destHeight / srcHeight;
+            const translateX = minX - (srcX * scaleX);
+            const translateY = minY - (srcY * scaleY);
+
+            svg += `
+              <image
+                href="${WORLD_MAP_URL}"
+                x="0" y="0"
+                width="${mapWidth}" height="${mapHeight}"
+                transform="translate(${translateX}, ${translateY}) scale(${scaleX}, ${scaleY})"
+                clip-path="url(#${clipId})"
+                opacity="0.7"
+                preserveAspectRatio="none" />
             `;
           }
         }
