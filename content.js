@@ -555,19 +555,24 @@
       return;
     }
 
-    console.log(`[RRS] Starting real-time scan for ${allServers.length} servers`);
-    statusText.textContent = `Scanning servers... (0/${allServers.length})`;
+    // Ensure we scan at least 500 servers (or all if less than 500)
+    const minServersToScan = 500;
+    const serversToScan = Math.min(allServers.length, Math.max(minServersToScan, allServers.length));
+    const scanList = allServers.slice(0, serversToScan);
+
+    console.log(`[RRS] Fetched ${allServers.length} servers, will scan ${scanList.length} for regions`);
+    statusText.textContent = `Scanning regions... (0/${scanList.length})`;
 
     // Check regions in batches with real-time updates
     const batchSize = 10;
     const batchDelay = 300;
 
-    for (let i = 0; i < allServers.length; i += batchSize) {
-      const batch = allServers.slice(i, i + batchSize);
-      const progress = Math.min(i + batchSize, allServers.length);
+    for (let i = 0; i < scanList.length; i += batchSize) {
+      const batch = scanList.slice(i, i + batchSize);
+      const progress = Math.min(i + batchSize, scanList.length);
 
       // Update status
-      statusText.textContent = `Scanning servers... (${progress}/${allServers.length})`;
+      statusText.textContent = `Scanning regions... (${progress}/${scanList.length})`;
 
       // Add delay between batches
       if (i > 0) {
@@ -584,15 +589,25 @@
 
       const batchResults = await Promise.allSettled(batchPromises);
 
-      // Update region counts
+      // Update region counts and store region info in allServers
       let newRegionFound = false;
-      batchResults.forEach(result => {
-        if (result.status === 'fulfilled' && result.value.region && result.value.region !== 'unknown') {
+      batchResults.forEach((result, idx) => {
+        if (result.status === 'fulfilled' && result.value.region) {
           const region = result.value.region;
-          if (!regionServerCounts[region]) {
-            newRegionFound = true;
+          const serverIndex = i + idx;
+
+          // Store region in allServers array
+          if (allServers[serverIndex]) {
+            allServers[serverIndex].region = region;
           }
-          regionServerCounts[region] = (regionServerCounts[region] || 0) + 1;
+
+          if (region !== 'unknown') {
+            if (!regionServerCounts[region]) {
+              newRegionFound = true;
+              console.log(`[RRS] New region discovered: ${region}`);
+            }
+            regionServerCounts[region] = (regionServerCounts[region] || 0) + 1;
+          }
         }
       });
 
@@ -603,13 +618,14 @@
 
       // Log progress
       const regionsFound = Object.keys(regionServerCounts).length;
-      console.log(`[RRS] Progress: ${progress}/${allServers.length} scanned, ${regionsFound} regions found`);
+      console.log(`[RRS] Progress: ${progress}/${scanList.length} scanned, ${regionsFound} regions found, ${Object.values(regionServerCounts).reduce((a,b) => a+b, 0)} servers mapped`);
     }
 
     console.log('[RRS] Real-time scan complete:', regionServerCounts);
 
     // Update status - scanning complete
-    statusText.textContent = `Found ${Object.keys(regionServerCounts).length} regions`;
+    const totalMapped = Object.values(regionServerCounts).reduce((a,b) => a+b, 0);
+    statusText.textContent = `Found ${Object.keys(regionServerCounts).length} regions (${totalMapped} servers)`;
     miniSpinner.classList.add('hidden');
   }
 
@@ -683,6 +699,12 @@
         const rotXRad = rotationX * Math.PI / 180;
         const rotYRad = rotationY * Math.PI / 180;
 
+        // Precompute rotation matrices
+        const cosRotX = Math.cos(rotXRad);
+        const sinRotX = Math.sin(rotXRad);
+        const cosRotY = Math.cos(rotYRad);
+        const sinRotY = Math.sin(rotYRad);
+
         // For each pixel
         for (let y = 0; y < renderSize; y++) {
           for (let x = 0; x < renderSize; x++) {
@@ -695,36 +717,30 @@
               // Calculate z coordinate (depth into screen)
               const dz = Math.sqrt(radius * radius - distSq);
 
-              // Initial 3D point on sphere (before rotation)
-              let x3d = dx;
-              let y3d = dy;
-              let z3d = dz;
+              // Initial 3D point on sphere (normalized)
+              let nx = dx / radius;
+              let ny = dy / radius;
+              let nz = dz / radius;
 
               // Apply Y-axis rotation (horizontal spin)
-              const cosRotX = Math.cos(rotXRad);
-              const sinRotX = Math.sin(rotXRad);
-              const x3d_rotated = x3d * cosRotX - z3d * sinRotX;
-              const z3d_rotated = x3d * sinRotX + z3d * cosRotX;
-              x3d = x3d_rotated;
-              z3d = z3d_rotated;
+              const nx_rotated = nx * cosRotX + nz * sinRotX;
+              const nz_rotated = -nx * sinRotX + nz * cosRotX;
+              nx = nx_rotated;
+              nz = nz_rotated;
 
               // Apply X-axis rotation (vertical tilt)
-              const cosRotY = Math.cos(rotYRad);
-              const sinRotY = Math.sin(rotYRad);
-              const y3d_rotated = y3d * cosRotY - z3d * sinRotY;
-              const z3d_final = y3d * sinRotY + z3d * cosRotY;
-              y3d = y3d_rotated;
-              z3d = z3d_final;
+              const ny_rotated = ny * cosRotY - nz * sinRotY;
+              const nz_final = ny * sinRotY + nz * cosRotY;
+              ny = ny_rotated;
+              nz = nz_final;
 
               // Only draw front hemisphere (z > 0 means facing viewer)
-              if (z3d > 0) {
-                // Convert rotated 3D point to lat/lon
-                const lat = Math.asin(Math.max(-1, Math.min(1, y3d / radius)));
-                const lon = Math.atan2(x3d, z3d);
-
-                // Convert to UV coordinates (equirectangular projection)
-                const u = (lon / Math.PI + 1) * 0.5;
-                const v = 0.5 - (lat / Math.PI);
+              if (nz > 0) {
+                // Standard equirectangular UV mapping
+                // u = atan2(x, z) / (2*PI) + 0.5
+                // v = asin(-y) / PI + 0.5
+                const u = Math.atan2(nx, nz) / (2 * Math.PI) + 0.5;
+                const v = Math.asin(-ny) / Math.PI + 0.5;
 
                 // Sample texture
                 const tx = Math.floor(u * (mapImage.width - 1));
@@ -829,38 +845,47 @@
     }
 
     function projectPointToScreen(lat, lon) {
-      // Convert lat/lon to 3D coordinates (matching texture mapping)
+      // Convert lat/lon to normalized 3D coordinates (matching texture mapping)
       const latRad = lat * (Math.PI / 180);
       const lonRad = lon * (Math.PI / 180);
 
-      // Initial 3D point on sphere
-      const x = radius * Math.cos(latRad) * Math.sin(lonRad);
-      const y = radius * Math.sin(latRad);
-      const z = radius * Math.cos(latRad) * Math.cos(lonRad);
+      // Standard spherical to Cartesian conversion
+      let nx = Math.cos(latRad) * Math.sin(lonRad);
+      let ny = Math.sin(latRad);
+      let nz = Math.cos(latRad) * Math.cos(lonRad);
 
-      // Apply Y-axis rotation (horizontal spin)
+      // Apply Y-axis rotation (horizontal spin) - matching texture rotation
       const rotXRad = rotationX * (Math.PI / 180);
       const cosRotX = Math.cos(rotXRad);
       const sinRotX = Math.sin(rotXRad);
-      const x_rotated = x * cosRotX - z * sinRotX;
-      const z_rotated = x * sinRotX + z * cosRotX;
+      const nx_rotated = nx * cosRotX + nz * sinRotX;
+      const nz_rotated = -nx * sinRotX + nz * cosRotX;
+      nx = nx_rotated;
+      nz = nz_rotated;
 
-      // Apply X-axis rotation (vertical tilt)
+      // Apply X-axis rotation (vertical tilt) - matching texture rotation
       const rotYRad = rotationY * (Math.PI / 180);
       const cosRotY = Math.cos(rotYRad);
       const sinRotY = Math.sin(rotYRad);
-      const y_rotated = y * cosRotY - z_rotated * sinRotY;
-      const z_final = y * sinRotY + z_rotated * cosRotY;
+      const ny_rotated = ny * cosRotY - nz * sinRotY;
+      const nz_final = ny * sinRotY + nz * cosRotY;
+      ny = ny_rotated;
+      nz = nz_final;
+
+      // Scale back to radius
+      const x = nx * radius;
+      const y = ny * radius;
+      const z = nz;
 
       const perspective = 600;
-      const scale = perspective / (perspective + z_final);
+      const scale = perspective / (perspective + z * radius);
 
       return {
-        x: centerX + x_rotated * scale,
-        y: centerY + y_rotated * scale,
-        visible: z_final > 0,
+        x: centerX + x * scale,
+        y: centerY + y * scale,
+        visible: nz > 0,
         scale: scale,
-        z: z_final
+        z: z * radius
       };
     }
 
