@@ -163,6 +163,7 @@
           backdrop-filter: blur(10px);
           z-index: 999999;
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
           animation: rrs-fadeIn 0.3s ease;
@@ -178,11 +179,67 @@
           to { opacity: 0; }
         }
 
+        @keyframes rrs-globePopIn {
+          0% {
+            opacity: 0;
+            transform: scale(0.5) translateX(0);
+          }
+          60% {
+            transform: scale(1.1) translateX(0);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1) translateX(0);
+          }
+        }
+
+        #rrs-status-bar {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 15px;
+          color: white;
+          font-size: 18px;
+          font-family: 'Segoe UI', sans-serif;
+          font-weight: 500;
+          margin-bottom: 30px;
+          opacity: 0;
+          animation: rrs-fadeIn 0.5s ease 0.3s forwards;
+        }
+
+        #rrs-status-logo {
+          width: 32px;
+          height: 32px;
+        }
+
+        #rrs-status-text {
+          color: white;
+        }
+
+        .rrs-mini-spinner {
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          border-top: 2px solid #4181FA;
+          border-radius: 50%;
+          width: 20px;
+          height: 20px;
+          animation: rrs-spin 1s linear infinite;
+        }
+
+        .rrs-mini-spinner.hidden {
+          display: none;
+        }
+
+        @keyframes rrs-spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
         #rrs-globe-container {
           position: relative;
           width: 600px;
           height: 600px;
           transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+          animation: rrs-globePopIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         #rrs-globe-container.shifted {
@@ -201,11 +258,6 @@
           cursor: grabbing;
         }
 
-        #rrs-globe-svg {
-          width: 100%;
-          height: 100%;
-        }
-
         .rrs-region-dot {
           cursor: pointer;
           transition: all 0.2s ease;
@@ -222,15 +274,6 @@
         .rrs-region-dot.active {
           fill: #4181FA;
           filter: drop-shadow(0 0 8px rgba(65, 129, 250, 0.8));
-        }
-
-        #rrs-logo {
-          position: absolute;
-          top: 20px;
-          left: 20px;
-          width: 60px;
-          height: 60px;
-          z-index: 10;
         }
 
         #rrs-close-btn {
@@ -255,33 +298,6 @@
         #rrs-close-btn:hover {
           background: rgba(255, 255, 255, 0.2);
           transform: scale(1.1);
-        }
-
-        #rrs-loading {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          color: white;
-          font-size: 18px;
-          font-family: 'Segoe UI', sans-serif;
-          text-align: center;
-          z-index: 5;
-        }
-
-        .rrs-spinner {
-          border: 3px solid rgba(255, 255, 255, 0.3);
-          border-top: 3px solid #4181FA;
-          border-radius: 50%;
-          width: 50px;
-          height: 50px;
-          animation: rrs-spin 1s linear infinite;
-          margin: 0 auto 20px;
-        }
-
-        @keyframes rrs-spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
         }
 
         #rrs-server-list {
@@ -576,17 +592,15 @@
       ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
       ctx.fill();
 
-      // Draw textured globe (optimized rendering)
+      // Draw textured globe
       if (mapData) {
         const imageData = ctx.createImageData(renderSize, renderSize);
         const data = imageData.data;
 
-        const cosRotX = Math.cos(rotationX * Math.PI / 180);
-        const sinRotX = Math.sin(rotationX * Math.PI / 180);
-        const cosRotY = Math.cos(rotationY * Math.PI / 180);
-        const sinRotY = Math.sin(rotationY * Math.PI / 180);
+        const rotXRad = rotationX * Math.PI / 180;
+        const rotYRad = rotationY * Math.PI / 180;
 
-        // Sample every pixel for texture mapping
+        // For each pixel
         for (let y = 0; y < renderSize; y++) {
           for (let x = 0; x < renderSize; x++) {
             const dx = x - centerX;
@@ -595,31 +609,39 @@
 
             // Check if within sphere
             if (distSq <= radius * radius) {
-              // Calculate 3D point on sphere
+              // Calculate z coordinate (depth into screen)
               const dz = Math.sqrt(radius * radius - distSq);
 
-              // Apply rotation (matching projectPointToScreen coordinate system)
-              // Convert to spherical first
-              const lat = Math.asin(-dy / radius); // Negative for correct orientation
-              const lon = Math.atan2(dx, dz);
+              // Initial 3D point on sphere (before rotation)
+              let x3d = dx;
+              let y3d = dy;
+              let z3d = dz;
 
-              // Apply rotations
-              const adjustedLon = lon - (rotationX * Math.PI / 180);
-              const adjustedLat = lat + (rotationY * Math.PI / 180);
+              // Apply Y-axis rotation (horizontal spin)
+              const cosRotX = Math.cos(rotXRad);
+              const sinRotX = Math.sin(rotXRad);
+              const x3d_rotated = x3d * cosRotX - z3d * sinRotX;
+              const z3d_rotated = x3d * sinRotX + z3d * cosRotX;
+              x3d = x3d_rotated;
+              z3d = z3d_rotated;
 
-              // Check if visible (front hemisphere)
-              const theta = adjustedLon;
-              const phi = Math.PI / 2 - adjustedLat;
-              const zCheck = radius * Math.sin(phi) * Math.sin(theta);
+              // Apply X-axis rotation (vertical tilt)
+              const cosRotY = Math.cos(rotYRad);
+              const sinRotY = Math.sin(rotYRad);
+              const y3d_rotated = y3d * cosRotY - z3d * sinRotY;
+              const z3d_final = y3d * sinRotY + z3d * cosRotY;
+              y3d = y3d_rotated;
+              z3d = z3d_final;
 
-              if (Math.abs(theta) < Math.PI / 2) { // Front hemisphere check
-                // Convert to UV coordinates
-                let u = (adjustedLon / Math.PI + 1) * 0.5;
-                let v = 0.5 - (adjustedLat / Math.PI);
+              // Only draw front hemisphere (z > 0 means facing viewer)
+              if (z3d > 0) {
+                // Convert rotated 3D point to lat/lon
+                const lat = Math.asin(Math.max(-1, Math.min(1, y3d / radius)));
+                const lon = Math.atan2(x3d, z3d);
 
-                // Wrap UV coordinates
-                u = ((u % 1) + 1) % 1;
-                v = Math.max(0, Math.min(1, v));
+                // Convert to UV coordinates (equirectangular projection)
+                const u = (lon / Math.PI + 1) * 0.5;
+                const v = 0.5 - (lat / Math.PI);
 
                 // Sample texture
                 const tx = Math.floor(u * (mapImage.width - 1));
@@ -724,26 +746,38 @@
     }
 
     function projectPointToScreen(lat, lon) {
-      const phi = (90 - lat) * (Math.PI / 180);
-      const theta = (lon + rotationX) * (Math.PI / 180);
+      // Convert lat/lon to 3D coordinates (matching texture mapping)
+      const latRad = lat * (Math.PI / 180);
+      const lonRad = lon * (Math.PI / 180);
 
-      const x = radius * Math.sin(phi) * Math.cos(theta);
-      const y = radius * Math.cos(phi);
-      const z = radius * Math.sin(phi) * Math.sin(theta);
+      // Initial 3D point on sphere
+      const x = radius * Math.cos(latRad) * Math.sin(lonRad);
+      const y = radius * Math.sin(latRad);
+      const z = radius * Math.cos(latRad) * Math.cos(lonRad);
 
-      const rotY = rotationY * (Math.PI / 180);
-      const yRotated = y * Math.cos(rotY) - z * Math.sin(rotY);
-      const zRotated = y * Math.sin(rotY) + z * Math.cos(rotY);
+      // Apply Y-axis rotation (horizontal spin)
+      const rotXRad = rotationX * (Math.PI / 180);
+      const cosRotX = Math.cos(rotXRad);
+      const sinRotX = Math.sin(rotXRad);
+      const x_rotated = x * cosRotX - z * sinRotX;
+      const z_rotated = x * sinRotX + z * cosRotX;
+
+      // Apply X-axis rotation (vertical tilt)
+      const rotYRad = rotationY * (Math.PI / 180);
+      const cosRotY = Math.cos(rotYRad);
+      const sinRotY = Math.sin(rotYRad);
+      const y_rotated = y * cosRotY - z_rotated * sinRotY;
+      const z_final = y * sinRotY + z_rotated * cosRotY;
 
       const perspective = 600;
-      const scale = perspective / (perspective + zRotated);
+      const scale = perspective / (perspective + z_final);
 
       return {
-        x: centerX + x * scale,
-        y: centerY + yRotated * scale,
-        visible: zRotated < radius * 0.3,
+        x: centerX + x_rotated * scale,
+        y: centerY + y_rotated * scale,
+        visible: z_final > 0,
         scale: scale,
-        z: zRotated
+        z: z_final
       };
     }
 
