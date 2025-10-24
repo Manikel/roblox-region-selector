@@ -80,65 +80,33 @@
     });
   }
 
-  // Inject button next to Roblox play button
+  // Simple one-time button injection
   function injectRegionButton() {
-    console.log('[RRS] Attempting to inject button...');
+    // Check if already injected
+    if (document.getElementById('rrs-region-button')) return;
 
-    const playButtonSelectors = [
-      'button[data-testid="play-button"]',
-      '#game-details-play-button-container button',
-      'button.btn-common-play-game-lg',
-      'button[class*="btn-primary-md"][class*="play"]'
-    ];
-
-    let playButton = null;
-    for (const selector of playButtonSelectors) {
-      playButton = document.querySelector(selector);
-      if (playButton) {
-        console.log('[RRS] Found play button with selector:', selector);
-        break;
-      }
-    }
-
-    if (!playButton) {
-      console.log('[RRS] No play button found');
-      return;
-    }
-
-    if (document.getElementById('rrs-region-button')) {
-      console.log('[RRS] Button already exists');
-      return;
-    }
+    // Find play button
+    const playButton = document.querySelector('button[data-testid="play-button"]');
+    if (!playButton) return;
 
     // Extract place ID from URL
     const match = window.location.pathname.match(/\/games\/(\d+)/);
-    if (!match) {
-      console.log('[RRS] No game ID in URL');
-      return;
-    }
+    if (!match) return;
     currentPlaceId = match[1];
-    console.log('[RRS] Game ID:', currentPlaceId);
 
     // Create our button
     const regionButton = document.createElement('button');
     regionButton.id = 'rrs-region-button';
-    regionButton.innerHTML = `
-      <img src="${chrome.runtime.getURL('icons/icon48.png')}" style="width: 28px; height: 28px; vertical-align: middle;" />
-    `;
-
-    // Style to match Roblox button with blue color
-    const playButtonStyles = window.getComputedStyle(playButton);
+    regionButton.innerHTML = `<img src="${chrome.runtime.getURL('icons/icon48.png')}" style="width: 28px; height: 28px;" />`;
     regionButton.style.cssText = `
       background: #4181FA;
       color: white;
       border: none;
       border-radius: 8px;
       padding: 12px 16px;
-      font-size: 16px;
       font-weight: 600;
       cursor: pointer;
-      font-family: ${playButtonStyles.fontFamily};
-      height: ${playButtonStyles.height};
+      height: ${window.getComputedStyle(playButton).height};
       margin-right: 8px;
       transition: all 0.2s ease;
       display: inline-flex;
@@ -160,36 +128,17 @@
       openGlobeOverlay();
     });
 
-    // Insert before play button
     playButton.parentNode.insertBefore(regionButton, playButton);
-
-    // Slightly shrink the play button to make room
-    const currentWidth = playButton.offsetWidth;
-    playButton.style.width = `${currentWidth - 60}px`;
-
-    console.log('[Roblox Region Selector] Region button injected');
   }
 
-  // Try to inject button with retries
-  let injectionAttempts = 0;
-  const maxAttempts = 20;
-  const injectionInterval = setInterval(() => {
-    injectRegionButton();
-    injectionAttempts++;
-    if (injectionAttempts >= maxAttempts || document.getElementById('rrs-region-button')) {
-      clearInterval(injectionInterval);
-    }
-  }, 500);
-
-  // Also watch for DOM changes
-  const observer = new MutationObserver(() => {
-    injectRegionButton();
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
+  // Inject button once when page loads
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(injectRegionButton, 1000);
+    });
+  } else {
+    setTimeout(injectRegionButton, 1000);
+  }
 
   // Open globe overlay
   async function openGlobeOverlay() {
@@ -997,21 +946,5 @@
       }
     }
   });
-
-  // Inject the injector script
-  function injectScript() {
-    const script = document.createElement('script');
-    script.src = chrome.runtime.getURL('injector.js');
-    script.onload = function() {
-      this.remove();
-    };
-    (document.head || document.documentElement).appendChild(script);
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', injectScript);
-  } else {
-    injectScript();
-  }
 
 })();
