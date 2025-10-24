@@ -27,11 +27,13 @@ class Globe3D {
     // Globe state
     this.rotation = { x: 0, y: 0 };
     this.targetRotation = { x: 0, y: 0 };
+    this.lastRenderedRotation = { x: 999, y: 999 };  // Force initial render
     this.isDragging = false;
     this.lastMouse = { x: 0, y: 0 };
     this.markers = [];
     this.texture = null;
     this.animationFrame = null;
+    this.cachedTextureCanvas = null;  // Cache rendered texture
 
     // Setup events
     this.setupEvents();
@@ -159,8 +161,8 @@ class Globe3D {
     const centerY = this.height / 2;
 
     // Smooth rotation interpolation
-    this.rotation.x += (this.targetRotation.x - this.rotation.x) * 0.15;
-    this.rotation.y += (this.targetRotation.y - this.rotation.y) * 0.15;
+    this.rotation.x += (this.targetRotation.x - this.rotation.x) * 0.2;
+    this.rotation.y += (this.targetRotation.y - this.rotation.y) * 0.2;
 
     // Clear
     ctx.fillStyle = '#0a0a0a';
@@ -180,9 +182,19 @@ class Globe3D {
     ctx.fillStyle = gradient;
     ctx.fill();
 
-    // Draw texture if loaded
+    // Draw texture if loaded (only re-render if rotation changed significantly)
     if (this.texture) {
-      this.renderTexturedGlobe();
+      const rotationDelta = Math.abs(this.rotation.x - this.lastRenderedRotation.x) +
+                           Math.abs(this.rotation.y - this.lastRenderedRotation.y);
+
+      // Re-render texture if rotation changed by more than 2 degrees
+      if (rotationDelta > 2 || !this.cachedTextureCanvas) {
+        this.renderTexturedGlobe();
+        this.lastRenderedRotation = { x: this.rotation.x, y: this.rotation.y };
+      } else if (this.cachedTextureCanvas) {
+        // Use cached texture
+        ctx.drawImage(this.cachedTextureCanvas, 0, 0);
+      }
     }
 
     // Draw grid
@@ -250,12 +262,12 @@ class Globe3D {
           // Only render front hemisphere
           if (nz2 > 0) {
             // Convert to spherical coordinates
-            const phi = Math.acos(Math.max(-1, Math.min(1, ny2)));  // Angle from north pole [0, π]
-            const theta = Math.atan2(nz2, nx1);  // Longitude [-π, π]
+            const theta = Math.atan2(nx1, nz2);  // Longitude [-π, π]
+            const phi = Math.acos(Math.max(-1, Math.min(1, ny2)));  // Polar angle [0, π]
 
             // Map to texture coordinates (equirectangular)
             const u = (theta + Math.PI) / (2 * Math.PI);  // Map [-π, π] to [0, 1]
-            const v = phi / Math.PI;  // Map [0, π] to [0, 1]
+            const v = 1 - (phi / Math.PI);  // Map [0, π] to [1, 0] (flip vertical)
 
             const tx = Math.floor(u * (this.texture.width - 1));
             const ty = Math.floor(v * (this.texture.height - 1));
@@ -275,6 +287,15 @@ class Globe3D {
     }
 
     ctx.putImageData(imageData, 0, 0);
+
+    // Cache the rendered texture
+    if (!this.cachedTextureCanvas) {
+      this.cachedTextureCanvas = document.createElement('canvas');
+      this.cachedTextureCanvas.width = this.width;
+      this.cachedTextureCanvas.height = this.height;
+    }
+    const cacheCtx = this.cachedTextureCanvas.getContext('2d');
+    cacheCtx.putImageData(imageData, 0, 0);
   }
 
   drawGrid() {
