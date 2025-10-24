@@ -35,7 +35,7 @@
     'sydney': { lat: -33.8688, lon: 151.2093, name: 'Sydney', country: 'Australia', flag: '🇦🇺' }
   };
 
-  // Load THREE.js and initialize globe
+  // Load THREE.js - expects it to be injected by content script
   function loadThreeJs() {
     return new Promise((resolve, reject) => {
       if (window.THREE) {
@@ -43,17 +43,21 @@
         return;
       }
 
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
-      script.onload = () => {
-        console.log('[RRS Globe] THREE.js loaded successfully');
-        resolve();
-      };
-      script.onerror = () => {
-        console.error('[RRS Globe] Failed to load THREE.js');
-        reject(new Error('Failed to load THREE.js'));
-      };
-      document.head.appendChild(script);
+      // Wait for THREE.js to be injected
+      let attempts = 0;
+      const maxAttempts = 50; // 5 seconds
+      const checkInterval = setInterval(() => {
+        attempts++;
+        if (window.THREE) {
+          clearInterval(checkInterval);
+          console.log('[RRS Globe] THREE.js loaded successfully');
+          resolve();
+        } else if (attempts >= maxAttempts) {
+          clearInterval(checkInterval);
+          console.error('[RRS Globe] THREE.js not found after waiting');
+          reject(new Error('THREE.js not loaded'));
+        }
+      }, 100);
     });
   }
 

@@ -35,11 +35,43 @@
   // World map texture URL
   const WORLD_MAP_URL = chrome.runtime.getURL('icons/world-map.png');
 
+  // Inject THREE.js library into page context
+  function injectThreeJs() {
+    return new Promise((resolve, reject) => {
+      // Check if already loaded
+      if (document.querySelector('script[data-three-js]')) {
+        resolve();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL('three.min.js');
+      script.setAttribute('data-three-js', 'true');
+      script.onload = () => {
+        console.log('[RRS] THREE.js injected into page');
+        resolve();
+      };
+      script.onerror = () => {
+        console.error('[RRS] Failed to inject THREE.js');
+        reject(new Error('Failed to inject THREE.js'));
+      };
+      (document.head || document.documentElement).appendChild(script);
+    });
+  }
+
   // Inject globe renderer script into page context
   function injectGlobeRenderer() {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       if (globeRendererReady) {
         resolve();
+        return;
+      }
+
+      // First inject THREE.js
+      try {
+        await injectThreeJs();
+      } catch (error) {
+        reject(error);
         return;
       }
 
