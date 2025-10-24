@@ -625,12 +625,8 @@
 
   // Initialize globe via globe-renderer.js
   function renderThreeJsGlobe() {
-    // Send message to globe renderer to initialize with texture URL
-    const earthTextureUrl = chrome.runtime.getURL('icons/earth_atmos_2048.jpg');
-    window.postMessage({
-      type: 'INIT_GLOBE',
-      earthTextureUrl: earthTextureUrl
-    }, window.location.origin);
+    // Send message to globe renderer to initialize
+    window.postMessage({ type: 'INIT_GLOBE' }, window.location.origin);
 
     // Wait for globe to be ready
     const globeReadyPromise = new Promise((resolve, reject) => {

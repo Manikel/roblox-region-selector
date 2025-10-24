@@ -11,7 +11,6 @@
   let isRotating = false;
   let lastMouseX = 0;
   let rotationVelocity = 0;
-  let earthTextureUrl = null; // Will be provided by content script
 
   // Region coordinates (lat, lon) - must match content.js
   const REGION_COORDS = {
@@ -122,54 +121,43 @@
     renderer.setClearColor(0x000000, 0);
     container.appendChild(renderer.domElement);
 
-    // Create globe
+    // Create globe - simple gray semi-transparent sphere
     const geometry = new THREE.SphereGeometry(1, 64, 64);
-    const textureLoader = new THREE.TextureLoader();
+    const material = new THREE.MeshPhongMaterial({
+      color: 0x808080,        // Gray color
+      transparent: true,
+      opacity: 0.3,           // Semi-transparent
+      shininess: 10
+    });
 
-    textureLoader.load(
-      earthTextureUrl,
-      (texture) => {
-        const material = new THREE.MeshPhongMaterial({
-          map: texture,
-          shininess: 5,
-          transparent: false
-        });
+    globe = new THREE.Mesh(geometry, material);
+    scene.add(globe);
 
-        globe = new THREE.Mesh(geometry, material);
-        scene.add(globe);
+    // Add lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
 
-        // Add lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-        scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    directionalLight.position.set(5, 3, 5);
+    scene.add(directionalLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
-        directionalLight.position.set(5, 3, 5);
-        scene.add(directionalLight);
+    // Setup raycaster for mouse interaction
+    raycaster = new THREE.Raycaster();
+    mouse = new THREE.Vector2();
 
-        // Setup raycaster for mouse interaction
-        raycaster = new THREE.Raycaster();
-        mouse = new THREE.Vector2();
+    // Add mouse event listeners
+    renderer.domElement.addEventListener('mousemove', onMouseMove);
+    renderer.domElement.addEventListener('mousedown', onMouseDown);
+    renderer.domElement.addEventListener('mouseup', onMouseUp);
+    renderer.domElement.addEventListener('click', onMouseClick);
 
-        // Add mouse event listeners
-        renderer.domElement.addEventListener('mousemove', onMouseMove);
-        renderer.domElement.addEventListener('mousedown', onMouseDown);
-        renderer.domElement.addEventListener('mouseup', onMouseUp);
-        renderer.domElement.addEventListener('click', onMouseClick);
+    // Start animation loop
+    animate();
 
-        // Start animation loop
-        animate();
+    // Notify content script that globe is ready
+    window.postMessage({ type: 'GLOBE_READY' }, '*');
 
-        // Notify content script that globe is ready
-        window.postMessage({ type: 'GLOBE_READY' }, '*');
-
-        console.log('[RRS Globe] Globe initialized successfully');
-      },
-      undefined,
-      (error) => {
-        console.error('[RRS Globe] Error loading texture:', error);
-        window.postMessage({ type: 'GLOBE_ERROR', error: 'Failed to load texture' }, '*');
-      }
-    );
+    console.log('[RRS Globe] Globe initialized successfully');
   }
 
   // Mouse event handlers
@@ -320,7 +308,6 @@
 
     if (data.type === 'INIT_GLOBE') {
       console.log('[RRS Globe] Initializing globe...');
-      earthTextureUrl = data.earthTextureUrl; // Set the texture URL from content script
       loadThreeJs()
         .then(() => initGlobe())
         .catch(error => {
