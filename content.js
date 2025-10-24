@@ -35,6 +35,8 @@
 
   // Inject button next to Roblox play button
   function injectRegionButton() {
+    console.log('[RRS] Attempting to inject button...');
+
     const playButtonSelectors = [
       'button[data-testid="play-button"]',
       '#game-details-play-button-container button',
@@ -45,17 +47,30 @@
     let playButton = null;
     for (const selector of playButtonSelectors) {
       playButton = document.querySelector(selector);
-      if (playButton) break;
+      if (playButton) {
+        console.log('[RRS] Found play button with selector:', selector);
+        break;
+      }
     }
 
-    if (!playButton || document.getElementById('rrs-region-button')) {
+    if (!playButton) {
+      console.log('[RRS] No play button found');
+      return;
+    }
+
+    if (document.getElementById('rrs-region-button')) {
+      console.log('[RRS] Button already exists');
       return;
     }
 
     // Extract place ID from URL
     const match = window.location.pathname.match(/\/games\/(\d+)/);
-    if (!match) return;
+    if (!match) {
+      console.log('[RRS] No game ID in URL');
+      return;
+    }
     currentPlaceId = match[1];
+    console.log('[RRS] Game ID:', currentPlaceId);
 
     // Create our button
     const regionButton = document.createElement('button');
