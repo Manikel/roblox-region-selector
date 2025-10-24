@@ -30,7 +30,7 @@
   "content_scripts": [
     {
       "matches": ["*://*.roblox.com/*"],
-      "js": ["content.js"],
+      "js": ["globe-3d.js", "content.js"],
       "run_at": "document_end"
     }
   ],

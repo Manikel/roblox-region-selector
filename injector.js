@@ -28,7 +28,7 @@
             'button.btn-common-play-game-lg',
             'button[class*="btn-primary-md"][class*="play"]'
         ];
-        
+
         let playButtons = [];
         for (const selector of selectors) {
             try {
@@ -42,12 +42,10 @@
                 console.error('[Roblox Region Selector] Error with selector:', selector, e);
             }
         }
-        
-        console.log('[Roblox Region Selector] Found', playButtons.length, 'play buttons');
-        
+
         playButtons.forEach(button => {
             if (!button || button.dataset.regionSelectorAttached) return;
-            
+
             try {
                 button.dataset.regionSelectorAttached = 'true';
                 console.log('[Roblox Region Selector] Attached listener to play button');

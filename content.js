@@ -35,8 +35,6 @@
 
   // Inject button next to Roblox play button
   function injectRegionButton() {
-    console.log('[RRS] Attempting to inject button...');
-
     const playButtonSelectors = [
       'button[data-testid="play-button"]',
       '#game-details-play-button-container button',
@@ -48,29 +46,24 @@
     for (const selector of playButtonSelectors) {
       playButton = document.querySelector(selector);
       if (playButton) {
-        console.log('[RRS] Found play button with selector:', selector);
         break;
       }
     }
 
     if (!playButton) {
-      console.log('[RRS] No play button found');
       return;
     }
 
     if (document.getElementById('rrs-region-button')) {
-      console.log('[RRS] Button already exists');
       return;
     }
 
     // Extract place ID from URL
     const match = window.location.pathname.match(/\/games\/(\d+)/);
     if (!match) {
-      console.log('[RRS] No game ID in URL');
       return;
     }
     currentPlaceId = match[1];
-    console.log('[RRS] Game ID:', currentPlaceId);
 
     // Create our button
     const regionButton = document.createElement('button');
@@ -643,19 +636,8 @@
   let globeInstance = null;
 
   async function renderGlobe() {
-    // Inject Globe3D library if not already loaded
-    if (!window.Globe3D) {
-      await new Promise((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = chrome.runtime.getURL('globe-3d.js');
-        script.onload = resolve;
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-    }
-
-    // Create globe instance
-    globeInstance = new window.Globe3D('rrs-globe', {
+    // Create globe instance (Globe3D is loaded via manifest.json)
+    globeInstance = new Globe3D('rrs-globe', {
       width: 600,
       height: 600,
       radius: 250
