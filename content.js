@@ -422,15 +422,15 @@
         }
       </style>
 
-      <img id="rrs-logo" src="${chrome.runtime.getURL('icons/icon128.png')}" />
-
       <div id="rrs-close-btn">×</div>
 
+      <div id="rrs-status-bar">
+        <img id="rrs-status-logo" src="${chrome.runtime.getURL('icons/icon128.png')}" />
+        <span id="rrs-status-text">Searching for servers...</span>
+        <div class="rrs-mini-spinner" id="rrs-mini-spinner"></div>
+      </div>
+
       <div id="rrs-globe-container">
-        <div id="rrs-loading">
-          <div class="rrs-spinner"></div>
-          <div>Scanning servers across regions...</div>
-        </div>
         <div id="rrs-globe"></div>
       </div>
 
@@ -451,8 +451,11 @@
       }
     });
 
-    // Start scanning servers
-    await scanServersForRegions();
+    // Render globe immediately (with all gray dots) and store reference
+    globeRendererInstance = renderGlobe();
+
+    // Start scanning servers in real-time
+    scanServersForRegionsRealtime();
   }
 
   function closeGlobeOverlay() {
@@ -461,6 +464,7 @@
       overlay.style.animation = 'rrs-fadeOut 0.3s ease';
       setTimeout(() => {
         overlay.remove();
+        globeRendererInstance = null; // Clean up reference
       }, 300);
     }
   }
@@ -528,6 +532,85 @@
     // Hide loading, show globe
     document.getElementById('rrs-loading').style.display = 'none';
     renderGlobe();
+  }
+
+  // Global reference to globe renderer for real-time updates
+  let globeRendererInstance = null;
+
+  // Real-time server scanning - updates globe as regions are discovered
+  async function scanServersForRegionsRealtime() {
+    regionServerCounts = {};
+
+    // Update status
+    const statusText = document.getElementById('rrs-status-text');
+    const miniSpinner = document.getElementById('rrs-mini-spinner');
+
+    // Fetch all servers
+    statusText.textContent = 'Loading servers...';
+    allServers = await fetchAllServers(currentPlaceId);
+
+    if (!allServers || allServers.length === 0) {
+      statusText.textContent = 'No servers found';
+      miniSpinner.classList.add('hidden');
+      return;
+    }
+
+    console.log(`[RRS] Starting real-time scan for ${allServers.length} servers`);
+    statusText.textContent = `Scanning servers... (0/${allServers.length})`;
+
+    // Check regions in batches with real-time updates
+    const batchSize = 10;
+    const batchDelay = 300;
+
+    for (let i = 0; i < allServers.length; i += batchSize) {
+      const batch = allServers.slice(i, i + batchSize);
+      const progress = Math.min(i + batchSize, allServers.length);
+
+      // Update status
+      statusText.textContent = `Scanning servers... (${progress}/${allServers.length})`;
+
+      // Add delay between batches
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, batchDelay));
+      }
+
+      // Check batch regions
+      const batchPromises = batch.map(server =>
+        getServerRegion(currentPlaceId, server.id).then(region => ({
+          ...server,
+          region: region
+        }))
+      );
+
+      const batchResults = await Promise.allSettled(batchPromises);
+
+      // Update region counts
+      let newRegionFound = false;
+      batchResults.forEach(result => {
+        if (result.status === 'fulfilled' && result.value.region && result.value.region !== 'unknown') {
+          const region = result.value.region;
+          if (!regionServerCounts[region]) {
+            newRegionFound = true;
+          }
+          regionServerCounts[region] = (regionServerCounts[region] || 0) + 1;
+        }
+      });
+
+      // Re-render globe to update dots if new region found
+      if (newRegionFound && globeRendererInstance) {
+        globeRendererInstance.updateDots();
+      }
+
+      // Log progress
+      const regionsFound = Object.keys(regionServerCounts).length;
+      console.log(`[RRS] Progress: ${progress}/${allServers.length} scanned, ${regionsFound} regions found`);
+    }
+
+    console.log('[RRS] Real-time scan complete:', regionServerCounts);
+
+    // Update status - scanning complete
+    statusText.textContent = `Found ${Object.keys(regionServerCounts).length} regions`;
+    miniSpinner.classList.add('hidden');
   }
 
 
@@ -886,6 +969,14 @@
         }
       }
     });
+
+    // Return API for external updates
+    return {
+      updateDots: function() {
+        // Trigger re-render to update dots
+        scheduleRender();
+      }
+    };
   }
 
   async function showServerList(regionCode) {
