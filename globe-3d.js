@@ -11,6 +11,10 @@ class Globe3D {
     this.width = options.width || 600;
     this.height = options.height || 600;
     this.radius = options.radius || 250;
+    this.baseRadius = this.radius;  // Store base radius for zoom
+    this.targetRadius = this.radius;
+    this.minRadius = this.radius * 0.7;  // 70% zoom in
+    this.maxRadius = this.radius;  // Current size is max zoom out
 
     // Create canvas
     this.canvas = document.createElement('canvas');
@@ -87,6 +91,13 @@ class Globe3D {
         console.log('[Globe3D] Click ignored - too much drag');
       }
     });
+
+    // Zoom with mouse wheel
+    this.canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomDelta = e.deltaY > 0 ? 1.1 : 0.9;
+      this.targetRadius = Math.max(this.minRadius, Math.min(this.maxRadius, this.targetRadius * zoomDelta));
+    });
   }
 
   latLonToXYZ(lat, lon, radius) {
@@ -122,6 +133,19 @@ class Globe3D {
 
   addMarker(lat, lon, data) {
     this.markers.push({ lat, lon, data });
+  }
+
+  // Center globe on a specific location with smooth animation
+  centerOn(lat, lon) {
+    // Calculate rotation needed to center on this location
+    this.targetRotation.y = lon;
+    this.targetRotation.x = -lat;
+
+    // Reset zoom to default (max zoom out)
+    this.targetRadius = this.maxRadius;
+
+    // Stop any momentum
+    this.velocity = { x: 0, y: 0 };
   }
 
   handleClick(x, y) {
@@ -164,6 +188,9 @@ class Globe3D {
     // Smooth interpolation
     this.rotation.x += (this.targetRotation.x - this.rotation.x) * 0.2;
     this.rotation.y += (this.targetRotation.y - this.rotation.y) * 0.2;
+
+    // Smooth zoom interpolation
+    this.radius += (this.targetRadius - this.radius) * 0.15;
 
     // Clear canvas (transparent)
     ctx.clearRect(0, 0, this.width, this.height);

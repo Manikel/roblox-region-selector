@@ -550,10 +550,12 @@
 
   // Global reference to globe renderer for real-time updates
   let globeRendererInstance = null;
+  let shouldStopScanning = false;  // Flag to stop scanning when server is joined
 
   // Real-time server scanning - updates globe as regions are discovered
   async function scanServersForRegionsRealtime() {
     regionServerCounts = {};
+    shouldStopScanning = false;  // Reset flag
 
     // Update status
     const statusText = document.getElementById('rrs-status-text');
@@ -569,12 +571,10 @@
       return;
     }
 
-    // Ensure we scan at least 500 servers (or all if less than 500)
-    const minServersToScan = 500;
-    const serversToScan = Math.min(allServers.length, Math.max(minServersToScan, allServers.length));
-    const scanList = allServers.slice(0, serversToScan);
+    // Scan ALL servers continuously
+    const scanList = allServers;
 
-    console.log(`[RRS] Fetched ${allServers.length} servers, will scan ${scanList.length} for regions`);
+    console.log(`[RRS] Fetched ${allServers.length} servers, will scan all for regions`);
     statusText.textContent = `Scanning regions... (0/${scanList.length})`;
 
     // Check regions in batches with real-time updates
@@ -582,6 +582,12 @@
     const batchDelay = 300;
 
     for (let i = 0; i < scanList.length; i += batchSize) {
+      // Stop scanning if player joined a server
+      if (shouldStopScanning) {
+        console.log('[RRS] Stopping scan - player joined server');
+        break;
+      }
+
       const batch = scanList.slice(i, i + batchSize);
       const progress = Math.min(i + batchSize, scanList.length);
 
@@ -727,6 +733,12 @@
     currentSelectedRegion = regionCode;
 
     const regionData = REGION_COORDS[regionCode];
+
+    // Center globe on selected region with smooth animation
+    if (globeInstance) {
+      globeInstance.centerOn(regionData.lat, regionData.lon);
+    }
+
     const regionServers = allServers.filter(s => s.region === regionCode);
 
     // Sort by player count (high to low)
@@ -791,6 +803,9 @@
   // Join a specific server
   async function joinServer(serverId) {
     console.log('[RRS] Joining server:', serverId);
+
+    // Stop scanning
+    shouldStopScanning = true;
 
     // Close overlay
     closeGlobeOverlay();
