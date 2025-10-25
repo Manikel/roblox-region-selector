@@ -61,62 +61,50 @@ class Globe3D {
       this.dragDistance = 0;
       this.velocity = { x: 0, y: 0 };
       this.canvas.style.cursor = 'grabbing';
+      this.tooltip.style.display = 'none';
     });
 
+    // Unified mousemove handler for both dragging and hover
     window.addEventListener('mousemove', (e) => {
-      if (!this.isDragging) return;
-
-      const dx = e.clientX - this.lastMouse.x;
-      const dy = e.clientY - this.lastMouse.y;
-      const dt = Date.now() - this.lastDragTime;
-
-      // Track total drag distance
-      this.dragDistance += Math.abs(dx) + Math.abs(dy);
-
-      this.targetRotation.y -= dx * 0.5;  // Fixed: inverted direction
-      this.targetRotation.x -= dy * 0.5;
-      this.targetRotation.x = Math.max(-90, Math.min(90, this.targetRotation.x));
-
-      // Track velocity for momentum
-      if (dt > 0) {
-        this.velocity.x = dy * 0.5 / dt * 16;
-        this.velocity.y = -dx * 0.5 / dt * 16;  // Fixed: inverted direction
-      }
-
-      this.lastMouse = { x: e.clientX, y: e.clientY };
-      this.lastDragTime = Date.now();
-    });
-
-    window.addEventListener('mouseup', () => {
-      this.isDragging = false;
-      this.canvas.style.cursor = 'grab';
-    });
-
-    this.canvas.addEventListener('click', (e) => {
-      // Only handle click if drag distance was minimal (< 10 pixels)
-      console.log('[Globe3D] Click event - dragDistance:', this.dragDistance);
-      if (this.dragDistance < 10) {
-        const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        console.log('[Globe3D] Processing click at:', x, y);
-        this.handleClick(x, y);
-      } else {
-        console.log('[Globe3D] Click ignored - too much drag');
-      }
-    });
-
-    // Hover detection
-    this.canvas.addEventListener('mousemove', (e) => {
+      // Handle dragging
       if (this.isDragging) {
+        const dx = e.clientX - this.lastMouse.x;
+        const dy = e.clientY - this.lastMouse.y;
+        const dt = Date.now() - this.lastDragTime;
+
+        // Track total drag distance
+        this.dragDistance += Math.abs(dx) + Math.abs(dy);
+
+        this.targetRotation.y -= dx * 0.5;
+        this.targetRotation.x -= dy * 0.5;
+        this.targetRotation.x = Math.max(-90, Math.min(90, this.targetRotation.x));
+
+        // Track velocity for momentum
+        if (dt > 0) {
+          this.velocity.x = dy * 0.5 / dt * 16;
+          this.velocity.y = -dx * 0.5 / dt * 16;
+        }
+
+        this.lastMouse = { x: e.clientX, y: e.clientY };
+        this.lastDragTime = Date.now();
+        this.tooltip.style.display = 'none';
+        return;
+      }
+
+      // Handle hover detection when not dragging
+      const rect = this.canvas.getBoundingClientRect();
+      const mouseX = e.clientX;
+      const mouseY = e.clientY;
+
+      // Check if mouse is over canvas
+      if (mouseX < rect.left || mouseX > rect.right || mouseY < rect.top || mouseY > rect.bottom) {
         this.tooltip.style.display = 'none';
         this.hoveredMarker = null;
         return;
       }
 
-      const rect = this.canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const x = mouseX - rect.left;
+      const y = mouseY - rect.top;
 
       // Check if hovering over any marker
       let foundMarker = null;
@@ -137,11 +125,33 @@ class Globe3D {
       if (foundMarker) {
         this.canvas.style.cursor = 'pointer';
         this.hoveredMarker = foundMarker;
-        this.showTooltip(e.clientX, e.clientY, foundMarker);
+        this.showTooltip(mouseX, mouseY, foundMarker);
       } else {
         this.canvas.style.cursor = 'grab';
         this.hoveredMarker = null;
         this.tooltip.style.display = 'none';
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      this.isDragging = false;
+      // Re-check hover state after mouseup
+      if (!this.hoveredMarker) {
+        this.canvas.style.cursor = 'grab';
+      }
+    });
+
+    this.canvas.addEventListener('click', (e) => {
+      // Only handle click if drag distance was minimal (< 10 pixels)
+      console.log('[Globe3D] Click event - dragDistance:', this.dragDistance);
+      if (this.dragDistance < 10) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        console.log('[Globe3D] Processing click at:', x, y);
+        this.handleClick(x, y);
+      } else {
+        console.log('[Globe3D] Click ignored - too much drag');
       }
     });
 
