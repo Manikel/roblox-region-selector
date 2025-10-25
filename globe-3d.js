@@ -11,10 +11,6 @@ class Globe3D {
     this.width = options.width || 600;
     this.height = options.height || 600;
     this.radius = options.radius || 250;
-    this.baseRadius = this.radius;  // Store base radius for zoom
-    this.targetRadius = this.radius;
-    this.minRadius = this.radius;  // Can't zoom out from default
-    this.maxRadius = this.radius * 1.6;  // Can zoom in to 160%
 
     // Create canvas
     this.canvas = document.createElement('canvas');
@@ -35,6 +31,24 @@ class Globe3D {
 
     // Data
     this.markers = [];
+    this.hoveredMarker = null;
+
+    // Create tooltip element
+    this.tooltip = document.createElement('div');
+    this.tooltip.style.position = 'absolute';
+    this.tooltip.style.background = 'rgba(0, 0, 0, 0.9)';
+    this.tooltip.style.color = 'white';
+    this.tooltip.style.padding = '12px 16px';
+    this.tooltip.style.borderRadius = '8px';
+    this.tooltip.style.fontSize = '14px';
+    this.tooltip.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+    this.tooltip.style.pointerEvents = 'none';
+    this.tooltip.style.zIndex = '10000';
+    this.tooltip.style.display = 'none';
+    this.tooltip.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.3)';
+    this.tooltip.style.lineHeight = '1.5';
+    this.tooltip.style.whiteSpace = 'nowrap';
+    document.body.appendChild(this.tooltip);
 
     this.setupEvents();
   }
@@ -92,11 +106,51 @@ class Globe3D {
       }
     });
 
-    // Zoom with mouse wheel (only zoom in, not out)
-    this.canvas.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const zoomDelta = e.deltaY > 0 ? 1.1 : 0.9;  // Scroll down = zoom in
-      this.targetRadius = Math.max(this.minRadius, Math.min(this.maxRadius, this.targetRadius * zoomDelta));
+    // Hover detection
+    this.canvas.addEventListener('mousemove', (e) => {
+      if (this.isDragging) {
+        this.tooltip.style.display = 'none';
+        this.hoveredMarker = null;
+        return;
+      }
+
+      const rect = this.canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Check if hovering over any marker
+      let foundMarker = null;
+      for (const marker of this.markers) {
+        const projected = this.project3DTo2D(marker.lat, marker.lon);
+        if (!projected.visible) continue;
+
+        const distance = Math.sqrt(
+          Math.pow(projected.x - x, 2) + Math.pow(projected.y - y, 2)
+        );
+
+        if (distance < 15) {
+          foundMarker = marker;
+          break;
+        }
+      }
+
+      if (foundMarker) {
+        this.canvas.style.cursor = 'pointer';
+        this.hoveredMarker = foundMarker;
+        this.showTooltip(e.clientX, e.clientY, foundMarker);
+      } else {
+        this.canvas.style.cursor = 'grab';
+        this.hoveredMarker = null;
+        this.tooltip.style.display = 'none';
+      }
+    });
+
+    this.canvas.addEventListener('mouseleave', () => {
+      this.tooltip.style.display = 'none';
+      this.hoveredMarker = null;
+      if (!this.isDragging) {
+        this.canvas.style.cursor = 'grab';
+      }
     });
   }
 
@@ -133,6 +187,35 @@ class Globe3D {
 
   addMarker(lat, lon, data) {
     this.markers.push({ lat, lon, data });
+  }
+
+  showTooltip(mouseX, mouseY, marker) {
+    const data = marker.data;
+
+    // Build tooltip content
+    let content = `<div style="font-weight: 600; margin-bottom: 6px;">${data.flag || ''} ${data.city || data.name}</div>`;
+
+    // Add location details
+    const locationParts = [];
+    if (data.state) {
+      locationParts.push(data.state);
+    }
+    locationParts.push(data.country);
+    if (locationParts.length > 0) {
+      content += `<div style="color: #a0a0a0; font-size: 12px; margin-bottom: 8px;">${locationParts.join(', ')}</div>`;
+    }
+
+    // Add server count
+    const serverCount = data.count || 0;
+    const serverText = serverCount === 1 ? 'server' : 'servers';
+    content += `<div style="color: #60a5fa; font-weight: 500;">${serverCount} ${serverText}</div>`;
+
+    this.tooltip.innerHTML = content;
+
+    // Position tooltip
+    this.tooltip.style.left = (mouseX + 15) + 'px';
+    this.tooltip.style.top = (mouseY + 15) + 'px';
+    this.tooltip.style.display = 'block';
   }
 
   handleClick(x, y) {
@@ -175,9 +258,6 @@ class Globe3D {
     // Smooth interpolation (reduced from 0.2 to 0.08 for slower, smoother animation)
     this.rotation.x += (this.targetRotation.x - this.rotation.x) * 0.08;
     this.rotation.y += (this.targetRotation.y - this.rotation.y) * 0.08;
-
-    // Smooth zoom interpolation (reduced from 0.15 to 0.08 for slower, smoother animation)
-    this.radius += (this.targetRadius - this.radius) * 0.08;
 
     // Clear canvas (transparent)
     ctx.clearRect(0, 0, this.width, this.height);

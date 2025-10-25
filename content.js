@@ -671,6 +671,10 @@
       globeInstance.addMarker(data.lat, data.lon, {
         code: code,
         name: data.name,
+        city: data.name,
+        state: data.state,
+        country: data.country,
+        flag: data.flag,
         count: regionServerCounts[code] || 0
       });
     });
@@ -695,6 +699,10 @@
             globeInstance.addMarker(data.lat, data.lon, {
               code: code,
               name: data.name,
+              city: data.name,
+              state: data.state,
+              country: data.country,
+              flag: data.flag,
               count: regionServerCounts[code] || 0
             });
           });
