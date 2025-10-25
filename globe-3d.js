@@ -13,8 +13,8 @@ class Globe3D {
     this.radius = options.radius || 250;
     this.baseRadius = this.radius;  // Store base radius for zoom
     this.targetRadius = this.radius;
-    this.minRadius = this.radius * 0.7;  // 70% zoom in
-    this.maxRadius = this.radius;  // Current size is max zoom out
+    this.minRadius = this.radius;  // Can't zoom out from default
+    this.maxRadius = this.radius * 1.6;  // Can zoom in to 160%
 
     // Create canvas
     this.canvas = document.createElement('canvas');
@@ -92,10 +92,10 @@ class Globe3D {
       }
     });
 
-    // Zoom with mouse wheel
+    // Zoom with mouse wheel (only zoom in, not out)
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;  // Inverted: scroll down = zoom in
+      const zoomDelta = e.deltaY > 0 ? 1.1 : 0.9;  // Scroll down = zoom in
       this.targetRadius = Math.max(this.minRadius, Math.min(this.maxRadius, this.targetRadius * zoomDelta));
     });
   }
@@ -133,19 +133,6 @@ class Globe3D {
 
   addMarker(lat, lon, data) {
     this.markers.push({ lat, lon, data });
-  }
-
-  // Center globe on a specific location with smooth animation
-  centerOn(lat, lon) {
-    // Calculate rotation needed to center on this location
-    this.targetRotation.y = -lon;
-    this.targetRotation.x = lat;
-
-    // Reset zoom to default (max zoom out)
-    this.targetRadius = this.maxRadius;
-
-    // Stop any momentum
-    this.velocity = { x: 0, y: 0 };
   }
 
   handleClick(x, y) {

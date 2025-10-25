@@ -734,11 +734,6 @@
 
     const regionData = REGION_COORDS[regionCode];
 
-    // Center globe on selected region with smooth animation
-    if (globeInstance) {
-      globeInstance.centerOn(regionData.lat, regionData.lon);
-    }
-
     const regionServers = allServers.filter(s => s.region === regionCode);
 
     // Sort by player count (high to low)
