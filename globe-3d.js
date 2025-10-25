@@ -27,6 +27,7 @@ class Globe3D {
     this.isDragging = false;
     this.lastMouse = { x: 0, y: 0 };
     this.lastDragTime = Date.now();
+    this.dragDistance = 0;  // Track drag distance to prevent click after drag
 
     // Data
     this.markers = [];
@@ -39,6 +40,7 @@ class Globe3D {
       this.isDragging = true;
       this.lastMouse = { x: e.clientX, y: e.clientY };
       this.lastDragTime = Date.now();
+      this.dragDistance = 0;
       this.velocity = { x: 0, y: 0 };
       this.canvas.style.cursor = 'grabbing';
     });
@@ -49,6 +51,9 @@ class Globe3D {
       const dx = e.clientX - this.lastMouse.x;
       const dy = e.clientY - this.lastMouse.y;
       const dt = Date.now() - this.lastDragTime;
+
+      // Track total drag distance
+      this.dragDistance += Math.abs(dx) + Math.abs(dy);
 
       this.targetRotation.y -= dx * 0.5;  // Fixed: inverted direction
       this.targetRotation.x -= dy * 0.5;
@@ -70,10 +75,13 @@ class Globe3D {
     });
 
     this.canvas.addEventListener('click', (e) => {
-      const rect = this.canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      this.handleClick(x, y);
+      // Only handle click if drag distance was minimal (< 5 pixels)
+      if (this.dragDistance < 5) {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        this.handleClick(x, y);
+      }
     });
   }
 
@@ -82,7 +90,7 @@ class Globe3D {
     const theta = (lon + 180) * Math.PI / 180;
 
     return {
-      x: radius * Math.sin(phi) * Math.cos(theta),
+      x: -radius * Math.sin(phi) * Math.cos(theta),  // Negated to fix east/west inversion
       y: radius * Math.cos(phi),
       z: radius * Math.sin(phi) * Math.sin(theta)
     };
