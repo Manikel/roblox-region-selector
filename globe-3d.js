@@ -95,7 +95,7 @@ class Globe3D {
     // Zoom with mouse wheel
     this.canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const zoomDelta = e.deltaY > 0 ? 1.1 : 0.9;
+      const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;  // Inverted: scroll down = zoom in
       this.targetRadius = Math.max(this.minRadius, Math.min(this.maxRadius, this.targetRadius * zoomDelta));
     });
   }
@@ -138,8 +138,8 @@ class Globe3D {
   // Center globe on a specific location with smooth animation
   centerOn(lat, lon) {
     // Calculate rotation needed to center on this location
-    this.targetRotation.y = lon;
-    this.targetRotation.x = -lat;
+    this.targetRotation.y = -lon;
+    this.targetRotation.x = lat;
 
     // Reset zoom to default (max zoom out)
     this.targetRadius = this.maxRadius;
@@ -185,12 +185,12 @@ class Globe3D {
       this.velocity.y *= 0.95;
     }
 
-    // Smooth interpolation
-    this.rotation.x += (this.targetRotation.x - this.rotation.x) * 0.2;
-    this.rotation.y += (this.targetRotation.y - this.rotation.y) * 0.2;
+    // Smooth interpolation (reduced from 0.2 to 0.08 for slower, smoother animation)
+    this.rotation.x += (this.targetRotation.x - this.rotation.x) * 0.08;
+    this.rotation.y += (this.targetRotation.y - this.rotation.y) * 0.08;
 
-    // Smooth zoom interpolation
-    this.radius += (this.targetRadius - this.radius) * 0.15;
+    // Smooth zoom interpolation (reduced from 0.15 to 0.08 for slower, smoother animation)
+    this.radius += (this.targetRadius - this.radius) * 0.08;
 
     // Clear canvas (transparent)
     ctx.clearRect(0, 0, this.width, this.height);
