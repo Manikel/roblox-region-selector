@@ -145,9 +145,8 @@ class Globe3D {
     this.rotation.x += (this.targetRotation.x - this.rotation.x) * 0.2;
     this.rotation.y += (this.targetRotation.y - this.rotation.y) * 0.2;
 
-    // Clear
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, this.width, this.height);
+    // Clear canvas (transparent)
+    ctx.clearRect(0, 0, this.width, this.height);
 
     // Draw globe sphere with modern gray gradient
     const gradient = ctx.createRadialGradient(
