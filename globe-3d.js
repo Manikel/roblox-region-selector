@@ -75,12 +75,16 @@ class Globe3D {
     });
 
     this.canvas.addEventListener('click', (e) => {
-      // Only handle click if drag distance was minimal (< 5 pixels)
-      if (this.dragDistance < 5) {
+      // Only handle click if drag distance was minimal (< 10 pixels)
+      console.log('[Globe3D] Click event - dragDistance:', this.dragDistance);
+      if (this.dragDistance < 10) {
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
+        console.log('[Globe3D] Processing click at:', x, y);
         this.handleClick(x, y);
+      } else {
+        console.log('[Globe3D] Click ignored - too much drag');
       }
     });
   }
@@ -121,20 +125,28 @@ class Globe3D {
   }
 
   handleClick(x, y) {
+    console.log('[Globe3D] handleClick called - checking', this.markers.length, 'markers');
+    console.log('[Globe3D] onMarkerClick callback exists:', !!this.onMarkerClick);
+
     for (const marker of this.markers) {
       const pos = this.latLonToXYZ(marker.lat, marker.lon, this.radius * 1.05);
       const projected = this.project3DTo2D(pos.x, pos.y, pos.z);
 
       if (projected.visible) {
         const dist = Math.hypot(x - projected.x, y - projected.y);
+        console.log('[Globe3D] Marker', marker.data?.name, '- distance:', dist.toFixed(2), 'visible:', projected.visible);
         if (dist < 20) {
+          console.log('[Globe3D] Marker clicked!', marker.data);
           if (this.onMarkerClick) {
             this.onMarkerClick(marker.data);
+          } else {
+            console.warn('[Globe3D] onMarkerClick not defined!');
           }
           return;
         }
       }
     }
+    console.log('[Globe3D] No marker clicked');
   }
 
   render() {
