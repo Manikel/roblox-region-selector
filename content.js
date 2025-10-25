@@ -345,6 +345,20 @@
           font-size: 16px;
         }
 
+        .rrs-player-avatars {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 15px;
+          flex-wrap: wrap;
+        }
+
+        .rrs-avatar {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
         .rrs-join-btn {
           background: #4181FA;
           color: white;
@@ -687,6 +701,111 @@
         }
       }
     };
+  }
+
+  // Show server list for a specific region
+  async function showServerList(regionCode) {
+    // If clicking the same region, do nothing
+    if (currentSelectedRegion === regionCode) {
+      return;
+    }
+
+    const serverList = document.getElementById('rrs-server-list');
+    const globeContainer = document.getElementById('rrs-globe-container');
+
+    // If there's already a region selected, animate out first
+    if (currentSelectedRegion !== null) {
+      // Slide out and fade out current server list
+      serverList.classList.remove('visible');
+      globeContainer.classList.remove('shifted');
+
+      // Wait for animation to complete
+      await new Promise(resolve => setTimeout(resolve, 600));
+    }
+
+    // Update current selection
+    currentSelectedRegion = regionCode;
+
+    const regionData = REGION_COORDS[regionCode];
+    const regionServers = allServers.filter(s => s.region === regionCode);
+
+    // Sort by player count (high to low)
+    regionServers.sort((a, b) => b.playing - a.playing);
+
+    // Build server list HTML
+    const locationName = regionData.state
+      ? `${regionData.name}, ${regionData.state}`
+      : regionData.name;
+
+    let html = `
+      <div class="rrs-region-header">
+        <span class="rrs-region-flag">${regionData.flag}</span>
+        <span>${locationName}</span>
+      </div>
+    `;
+
+    // Add servers with player avatars
+    for (const server of regionServers) {
+      // Get player avatars (limit to 6 players)
+      const playerIds = server.playerTokens ? server.playerTokens.slice(0, 6) : [];
+
+      let avatarsHtml = '';
+      if (playerIds.length > 0) {
+        avatarsHtml = '<div class="rrs-player-avatars">';
+        for (const token of playerIds) {
+          avatarsHtml += `<img class="rrs-avatar" src="https://www.roblox.com/headshot-thumbnail/image?userId=${token}&width=48&height=48&format=png" onerror="this.src='${chrome.runtime.getURL('icons/icon48.png')}'" />`;
+        }
+        avatarsHtml += '</div>';
+      }
+
+      html += `
+        <div class="rrs-server-item">
+          <div class="rrs-server-header">
+            <span class="rrs-player-count">${server.playing}/${server.maxPlayers} players</span>
+          </div>
+          ${avatarsHtml}
+          <button class="rrs-join-btn" data-server-id="${server.id}">Join Server</button>
+        </div>
+      `;
+    }
+
+    const serverListElem = document.getElementById('rrs-server-list');
+    serverListElem.innerHTML = html;
+
+    // Shift globe left and show server list with animation
+    setTimeout(() => {
+      globeContainer.classList.add('shifted');
+      serverListElem.classList.add('visible');
+    }, 100);
+
+    // Add join button handlers
+    serverListElem.querySelectorAll('.rrs-join-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const serverId = btn.getAttribute('data-server-id');
+        joinServer(serverId);
+      });
+    });
+  }
+
+  // Join a specific server
+  async function joinServer(serverId) {
+    console.log('[RRS] Joining server:', serverId);
+
+    // Close overlay
+    closeGlobeOverlay();
+
+    // Join via injector
+    window.postMessage({
+      type: 'JOIN_SPECIFIC_SERVER',
+      placeId: currentPlaceId,
+      serverId: serverId
+    }, window.location.origin);
+
+    // Show thank you popup after a short delay
+    setTimeout(() => {
+      showThankYouPopup();
+    }, 1000);
   }
 
   function showThankYouPopup() {
